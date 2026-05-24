@@ -57,8 +57,21 @@ fastify.post('/api/master-keys', async (req, reply) => {
 
 
 fastify.delete('/api/master-keys/:id', async (req, reply) => {
-  await query('DELETE FROM master_keys WHERE id = $1', [req.params.id]);
-  return { success: true };
+  const { id } = req.params;
+  try {
+    await query('BEGIN');
+    await query('UPDATE subkeys SET master_key_id = NULL WHERE master_key_id = $1', [id]);
+    const result = await query('DELETE FROM master_keys WHERE id = $1', [id]);
+    await query('COMMIT');
+    if (!result.rowCount) return reply.code(404).send({ error: 'master key not found' });
+    return { success: true };
+  } catch (err) {
+    await query('ROLLBACK').catch(() => {});
+    if (/invalid input syntax for type uuid/i.test(String(err?.message || ''))) {
+      return reply.code(400).send({ error: 'invalid master key id' });
+    }
+    throw err;
+  }
 });
 
 fastify.delete('/api/subkeys/:id', async (req, reply) => {
