@@ -56,12 +56,14 @@ export default function App() {
     <div className='app'>
       <Sidebar page={page} navigate={navigate} />
       <main className='main'>
-        {page === 'overview' && <OverviewPage navigate={navigate} ctx={ctx} />}
-        {page === 'masterkeys' && <MasterKeysPage ctx={ctx} />}
-        {page === 'subkeys' && <SubkeysPage ctx={ctx} />}
-        {page === 'logs' && <LogsPage ctx={ctx} />}
-        {page === 'demo' && <DemoPage ctx={ctx} />}
-        {page === 'notifications' && <NotificationsPage ctx={ctx} />}
+        <div key={page} className='page-transition'>
+          {page === 'overview' && <OverviewPage navigate={navigate} ctx={ctx} />}
+          {page === 'masterkeys' && <MasterKeysPage ctx={ctx} />}
+          {page === 'subkeys' && <SubkeysPage ctx={ctx} />}
+          {page === 'logs' && <LogsPage ctx={ctx} />}
+          {page === 'demo' && <DemoPage ctx={ctx} />}
+          {page === 'notifications' && <NotificationsPage ctx={ctx} />}
+        </div>
       </main>
     </div>
     <div className={`notif ${notif.show ? 'show' : ''} ${notif.type}`}>{notif.msg}</div>
