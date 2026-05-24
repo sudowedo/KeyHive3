@@ -79,9 +79,41 @@ fastify.get('/api/subkeys', async () => {
 
 fastify.patch('/api/subkeys/:id', async (req, reply) => {
   const { id } = req.params;
-  const { status } = req.body || {};
-  if (!['active', 'paused', 'revoked'].includes(status)) return reply.code(400).send({ error: 'status must be active|paused|revoked' });
-  await query('UPDATE subkeys SET status = $1 WHERE id = $2', [status, id]);
+  const body = req.body || {};
+  const updates = [];
+  const values = [];
+
+  if (body.status !== undefined) {
+    if (!['active', 'paused', 'revoked'].includes(body.status)) return reply.code(400).send({ error: 'status must be active|paused|revoked' });
+    updates.push(`status = $${values.length + 1}`);
+    values.push(body.status);
+  }
+  if (body.monthly_token_limit !== undefined) {
+    const v = Number(body.monthly_token_limit);
+    if (!Number.isFinite(v) || v < 1) return reply.code(400).send({ error: 'monthly_token_limit must be a positive number' });
+    updates.push(`monthly_token_limit = $${values.length + 1}`);
+    values.push(Math.round(v));
+  }
+  if (body.max_requests !== undefined) {
+    const v = Number(body.max_requests);
+    if (!Number.isFinite(v) || v < 1) return reply.code(400).send({ error: 'max_requests must be a positive number' });
+    updates.push(`max_requests = $${values.length + 1}`);
+    values.push(Math.round(v));
+  }
+  if (body.expires_in_days !== undefined) {
+    if (body.expires_in_days === null || body.expires_in_days === '') {
+      updates.push(`expires_at = NULL`);
+    } else {
+      const v = Number(body.expires_in_days);
+      if (!Number.isFinite(v) || v < 1) return reply.code(400).send({ error: 'expires_in_days must be a positive number or null' });
+      updates.push(`expires_at = NOW() + ($${values.length + 1} || ' days')::interval`);
+      values.push(String(Math.round(v)));
+    }
+  }
+
+  if (!updates.length) return reply.code(400).send({ error: 'no editable fields provided' });
+  values.push(id);
+  await query(`UPDATE subkeys SET ${updates.join(', ')} WHERE id = $${values.length}`, values);
   return { success: true };
 });
 
