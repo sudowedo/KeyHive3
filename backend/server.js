@@ -88,6 +88,20 @@ fastify.delete('/api/projects/:id', async (req, reply) => {
 });
 
 
+
+fastify.delete('/api/projects/by-slug/:slug', async (req, reply) => {
+  const slug = decodeURIComponent(String(req.params.slug || '').trim());
+  if (!slug) return reply.code(400).send({ error: 'project slug required' });
+  try {
+    const result = await query('DELETE FROM projects WHERE slug = $1', [slug]);
+    if (!result.rowCount) return reply.code(404).send({ error: 'project not found' });
+    return { success: true };
+  } catch (err) {
+    req.log.error(err);
+    return reply.code(500).send({ error: 'failed to delete project' });
+  }
+});
+
 fastify.get('/api/master-keys', async (req, reply) => {
   const project = await getProject(req, reply); if (!project) return;
   const { rows } = await query(`
