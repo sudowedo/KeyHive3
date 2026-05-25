@@ -61,7 +61,7 @@ fastify.post('/api/projects', async (req, reply) => {
   const { name, slug = null } = req.body || {};
   if (!name) return reply.code(400).send({ error: 'name required' });
   const { rows: countRows } = await query('SELECT COUNT(*)::int AS c FROM projects');
-  if ((countRows[0]?.c || 0) >= 2) return reply.code(400).send({ error: 'max 2 projects allowed for now' });
+  if ((countRows[0]?.c || 0) >= 3) return reply.code(400).send({ error: 'max 3 projects allowed for now' });
   const id = randomUUID();
   const generatedSlug = `project-${Math.random().toString(36).slice(2, 10)}`;
   await query(`INSERT INTO projects (id,name,slug,status) VALUES ($1,$2,$3,$4)`, [id, String(name).trim(), slug ? String(slug).trim() : generatedSlug, 'active']);

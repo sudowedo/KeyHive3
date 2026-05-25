@@ -57,6 +57,11 @@ body{min-height:100vh;display:flex;flex-direction:column}
 .page-header{margin-bottom:28px;padding:0 2px}
 .page-title{font-family:'Syne',sans-serif;font-size:22px;font-weight:700;letter-spacing:-0.03em}
 .page-sub{color:var(--muted);font-size:13px;margin-top:4px}
+.project-card{cursor:pointer;transition:transform .2s ease,border-color .2s ease}
+.project-card:hover{transform:translateY(-2px);border-color:#8f84ff66}
+.console-header{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 22px;margin:4px 14px 10px;border:1px solid #ffffff14;border-radius:12px;background:linear-gradient(160deg,#161726d9,#10121cd6)}
+.console-title{font-family:'Syne',sans-serif;font-size:18px;font-weight:700}
+.console-sub{font-size:12px;color:var(--muted);font-family:'DM Mono',monospace}
 
 /* ── Cards ── */
 .card{background:linear-gradient(165deg,#141420dd,#10101ad9);border:1px solid #ffffff17;border-radius:14px;padding:20px 22px;margin-bottom:16px;box-shadow:0 8px 24px #04050f4d,inset 0 1px 0 #ffffff14}
@@ -277,4 +282,6 @@ tr:hover td{background:#ffffff04}
   .modal-footer .btn{width:100%;justify-content:center}
   .notif{left:12px;right:12px;bottom:84px}
   .mobile-tabbar{gap:6px;padding:8px}
+  .console-header{margin:6px 0 8px;padding:10px 12px}
+  .console-title{font-size:16px}
 }

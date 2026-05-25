@@ -103,14 +103,38 @@ export default function App() {
   }
 
   if (view === 'select' || !projectSlug) {
-    return <div className='page active'><div style={{ maxWidth: 760, margin: '40px auto' }}><div className='card'><div className='card-title' style={{ marginBottom: 12 }}>Select Project</div><div style={{display:'grid',gap:10}}>{projects.map((p)=><button key={p.id} className='btn btn-ghost' style={{justifyContent:'space-between'}} onClick={()=>go(`/console/${p.slug}/overview`)}><span>{p.name} <span style={{color:'var(--muted)',fontSize:12}}>({p.slug})</span></span><span style={{fontSize:12,color:p.status==='active'?'var(--green)':'var(--amber)'}}>{p.status}</span></button>)}</div>{projects.length<2 && <div className='modal-footer'><button className='btn btn-primary' onClick={()=>go('/console/new')}>+ New Project</button></div>}</div></div><div className={`notif ${notif.show ? 'show' : ''} ${notif.type}`}>{notif.msg}</div></div>;
+    return <div className='page active'><div style={{ maxWidth: 980, margin: '26px auto' }}>
+      <div className='card' style={{padding:'14px 16px'}}>
+        <div style={{display:'flex',justifyContent:'space-between',gap:10,alignItems:'center',flexWrap:'wrap'}}>
+          <div><div className='card-title'>Projects Console</div><div className='card-sub'>Choose your workspace to continue</div></div>
+          {projects.length<3 && <button className='btn btn-primary' onClick={()=>go('/console/new')}>+ New Project</button>}
+        </div>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))',gap:12}}>
+        {projects.map((p)=><button key={p.id} className='card project-card' onClick={()=>go(`/console/${p.slug}/overview`)} style={{textAlign:'left'}}>
+          <div style={{display:'flex',justifyContent:'space-between',gap:8,alignItems:'center'}}>
+            <div style={{fontWeight:700,fontSize:20}}>{p.name}</div>
+            <span className={`badge ${p.status==='active'?'active':'paused'}`}>{p.status}</span>
+          </div>
+          <div style={{marginTop:8,color:'var(--muted)',fontSize:12}}>{p.slug}</div>
+          <div style={{marginTop:18,fontSize:12,color:'var(--dim)'}}>Created {fmtDate(p.created_at)}</div>
+        </button>)}
+      </div>
+      <div className={`notif ${notif.show ? 'show' : ''} ${notif.type}`}>{notif.msg}</div>
+    </div></div>;
   }
 
   return <>
     <div className='app'>
-      <Sidebar page={page} navigate={navigate} />
+      <Sidebar page={page} navigate={navigate} onBackToConsole={() => go('/console')} />
       <main className='main'>
-        <div style={{padding:'10px 22px',fontSize:12,color:'var(--muted)'}}>Project: <b style={{color:'var(--text)'}}>{selectedProject?.name || projectSlug}</b> ({selectedProject?.slug || projectSlug})</div>
+        <div className='console-header'>
+          <div>
+            <div className='console-title'>{selectedProject?.name || 'Project'}</div>
+            <div className='console-sub'>{selectedProject?.slug || projectSlug}</div>
+          </div>
+          <button className='btn btn-ghost btn-sm' onClick={() => go('/console')}>Switch project</button>
+        </div>
         <div key={page} className='page-transition'>
           {page === 'overview' && <OverviewPage navigate={navigate} ctx={ctx} />}
           {page === 'masterkeys' && <MasterKeysPage ctx={ctx} />}
