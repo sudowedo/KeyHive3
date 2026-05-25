@@ -103,17 +103,21 @@ export default function App() {
 
   const selectedProject = projects.find((p) => p.slug === projectSlug || p.id === projectSlug);
   const filteredProjects = projects.filter((p) => `${p.name} ${p.slug} ${p.id}`.toLowerCase().includes(projectSearch.toLowerCase()));
-  const expectedDeleteText = projectToDelete ? `sudo delete ${projectToDelete.id}` : '';
+  const expectedDeleteText = projectToDelete ? `delete ${projectToDelete.slug}` : '';
   const canDeleteProject = projectToDelete && deleteConfirm.trim() === expectedDeleteText;
 
   const deleteProject = async () => {
     if (!canDeleteProject || !projectToDelete) return;
-    await api(`/api/projects/${encodeURIComponent(projectToDelete.id)}`, { method: 'DELETE', headers: {} });
-    setDeleteConfirm('');
-    setProjectToDelete(null);
-    notify('Project deleted');
-    const ps = await loadProjects();
-    if (!ps.length) go('/console/new'); else go('/console');
+    try {
+      await api(`/api/projects/${encodeURIComponent(projectToDelete.slug)}`, { method: 'DELETE', headers: {} });
+      setDeleteConfirm('');
+      setProjectToDelete(null);
+      notify('Project deleted');
+      const ps = await loadProjects();
+      if (!ps.length) go('/console/new'); else go('/console');
+    } catch (e) {
+      notify(e.message || 'Failed to delete project', 'error');
+    }
   };
 
   if (view === 'create') {
@@ -161,11 +165,11 @@ export default function App() {
           </div>
           <div className='field' style={{marginTop:12}}>
             <label>Type "{expectedDeleteText}" to continue</label>
-            <input value={deleteConfirm} onChange={(e)=>setDeleteConfirm(e.target.value)} />
+            <input value={deleteConfirm} onChange={(e)=>setDeleteConfirm(e.target.value)} placeholder='delete project-xxxx' />
           </div>
           <div className='modal-footer'>
             <button className='btn btn-ghost' onClick={()=>setProjectToDelete(null)}>Cancel</button>
-            <button className='btn btn-danger' disabled={!canDeleteProject} onClick={deleteProject}>Delete project</button>
+            <button className='btn btn-danger' disabled={!canDeleteProject} onClick={deleteProject}>Delete project permanently</button>
           </div>
         </div>
       </div>

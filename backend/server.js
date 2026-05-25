@@ -72,16 +72,24 @@ fastify.delete('/api/projects/:id', async (req, reply) => {
   const projectRef = decodeURIComponent(String(req.params.id || '').trim());
   if (!projectRef) return reply.code(400).send({ error: 'project id/slug required' });
   try {
-    const bySlug = await query('DELETE FROM projects WHERE slug = $1 RETURNING id', [projectRef]);
-    if (bySlug.rows.length) return { success: true };
-    const byId = await query('DELETE FROM projects WHERE id::text = $1 RETURNING id', [projectRef]);
-    if (!byId.rows.length) return reply.code(404).send({ error: 'project not found' });
+    const { rows } = await query('SELECT id FROM projects WHERE slug = $1 OR id::text = $1 LIMIT 1', [projectRef]);
+    const project = rows[0];
+    if (!project) return reply.code(404).send({ error: 'project not found' });
+
+    await query('BEGIN');
+    await query('DELETE FROM request_logs WHERE project_id = $1', [project.id]);
+    await query('DELETE FROM quota_requests WHERE project_id = $1', [project.id]);
+    await query('DELETE FROM subkeys WHERE project_id = $1', [project.id]);
+    await query('DELETE FROM master_keys WHERE project_id = $1', [project.id]);
+    await query('DELETE FROM projects WHERE id = $1', [project.id]);
+    await query('COMMIT');
     return { success: true };
   } catch (err) {
+    await query('ROLLBACK').catch(() => {});
     if (/invalid input syntax for type uuid/i.test(String(err?.message || ''))) {
       return reply.code(400).send({ error: 'invalid project id' });
     }
-    throw err;
+    return reply.code(400).send({ error: err?.message || 'failed to delete project' });
   }
 });
 
