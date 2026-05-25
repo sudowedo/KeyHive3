@@ -39,7 +39,11 @@ export default function App() {
     return data;
   };
 
-  const loadProjects = async () => setProjects(await api('/api/projects', { headers: {} }));
+  const loadProjects = async () => {
+    const rows = await api('/api/projects', { headers: {} });
+    setProjects(rows);
+    return rows;
+  };
   const loadOverview = async () => { const [sks, an] = await Promise.all([api('/api/subkeys'), api('/api/analytics')]); setSubkeys(sks); setLogs(an.logs || []); setAnalytics(an); };
   const loadMasterKeys = async () => setMasterKeys(await api('/api/master-keys'));
   const loadSubkeys = async () => setSubkeys(await api('/api/subkeys'));
