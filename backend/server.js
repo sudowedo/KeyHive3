@@ -68,41 +68,37 @@ fastify.post('/api/projects', async (req, reply) => {
   return { id, name: String(name).trim(), slug: slug ? String(slug).trim() : generatedSlug, status: 'active', created_at: Math.floor(Date.now()/1000) };
 });
 
-fastify.delete('/api/projects/:id', async (req, reply) => {
-  const projectRef = decodeURIComponent(String(req.params.id || '').trim());
-  if (!projectRef) return reply.code(400).send({ error: 'project id/slug required' });
-  try {
-    const { rows } = await query('SELECT id FROM projects WHERE slug = $1 OR id::text = $1 LIMIT 1', [projectRef]);
-    const project = rows[0];
-    if (!project) return reply.code(404).send({ error: 'project not found' });
+async function deleteProjectByRef(projectRef) {
+  const ref = decodeURIComponent(String(projectRef || '').trim());
+  if (!ref) return { success: true, deleted: false, reason: 'empty_ref' };
+  const { rows } = await query('SELECT id,slug FROM projects WHERE slug = $1 OR id::text = $1 LIMIT 1', [ref]);
+  const project = rows[0];
+  if (!project) return { success: true, deleted: false, reason: 'not_found' };
+  await query('DELETE FROM projects WHERE id = $1', [project.id]);
+  return { success: true, deleted: true, id: project.id, slug: project.slug };
+}
 
-    await query('DELETE FROM projects WHERE id = $1', [project.id]);
-    return { success: true };
+fastify.delete('/api/projects/:id', async (req, reply) => {
+  try {
+    return await deleteProjectByRef(req.params.id);
   } catch (err) {
-    if (/invalid input syntax for type uuid/i.test(String(err?.message || ''))) {
-      return reply.code(400).send({ error: 'invalid project id' });
-    }
     req.log.error(err);
-    return reply.code(500).send({ error: 'failed to delete project' });
+    return reply.code(200).send({ success: false, deleted: false, reason: 'internal_error' });
   }
 });
 
 
 
 fastify.route({
-  method: ['DELETE', 'GET'],
+  method: ['DELETE', 'GET', 'POST'],
   url: '/api/projects/by-slug/:slug',
   handler: async (req, reply) => {
-  const slug = decodeURIComponent(String(req.params.slug || '').trim());
-  if (!slug) return reply.code(400).send({ error: 'project slug required' });
-  try {
-    const result = await query('DELETE FROM projects WHERE slug = $1', [slug]);
-    if (!result.rowCount) return reply.code(404).send({ error: 'project not found' });
-    return { success: true };
-  } catch (err) {
-    req.log.error(err);
-    return reply.code(500).send({ error: 'failed to delete project' });
-  }
+    try {
+      return await deleteProjectByRef(req.params.slug);
+    } catch (err) {
+      req.log.error(err);
+      return reply.code(200).send({ success: false, deleted: false, reason: 'internal_error' });
+    }
   },
 });
 
