@@ -89,7 +89,10 @@ fastify.delete('/api/projects/:id', async (req, reply) => {
 
 
 
-fastify.delete('/api/projects/by-slug/:slug', async (req, reply) => {
+fastify.route({
+  method: ['DELETE', 'GET'],
+  url: '/api/projects/by-slug/:slug',
+  handler: async (req, reply) => {
   const slug = decodeURIComponent(String(req.params.slug || '').trim());
   if (!slug) return reply.code(400).send({ error: 'project slug required' });
   try {
@@ -100,6 +103,7 @@ fastify.delete('/api/projects/by-slug/:slug', async (req, reply) => {
     req.log.error(err);
     return reply.code(500).send({ error: 'failed to delete project' });
   }
+  },
 });
 
 fastify.get('/api/master-keys', async (req, reply) => {
