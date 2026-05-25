@@ -1,0 +1,124 @@
+KeyHive Pricing Plan (Pre-Launch Draft)
+======================================
+
+This pricing model is designed for the current app and explicitly includes the upcoming
+"Projects" feature before public launch.
+
+North Star:
+- Let users start in <5 minutes.
+- Charge based on governance depth + scale (projects, requests, subkeys, logs, controls).
+- Keep provider costs pass-through (OpenAI/Anthropic/Google usage billed to user's own keys).
+
+
+1) Free
+-------
+Price:
+- $0 / month
+
+Who it is for:
+- Solo developers evaluating the gateway quickly.
+- Early internal demos.
+
+Includes:
+- Projects: 1
+- Master Keys: 1 total (choose 1 provider from OpenAI, Anthropic, Google)
+- Subkeys: 3
+- Monthly requests: 10,000
+- Rate limiting: Basic
+- Logs: Basic recent logs only (no advanced analytics/history)
+- Key governance: Limited (pause/revoke + basic limits)
+- Team members: 1 admin
+- Support: Community / docs only
+
+Purpose:
+- "Try in 5 minutes"
+
+
+2) Starter
+----------
+Price:
+- $19 / month
+
+Who it is for:
+- Small teams running one product in production-light mode.
+
+Includes:
+- Projects: up to 3
+- Master Keys: up to 3 (OpenAI + Anthropic + Google)
+- Subkeys: up to 25
+- Monthly requests: 250,000
+- Rate limiting: Standard per-subkey controls
+- Logs: 14-day retention + basic filters
+- Key governance: Full policy edits (quota, max requests, expiry, status)
+- Alerts: Near-limit + expiry alerts
+- Team members: up to 3 admins
+- Support: Email (best effort)
+
+
+3) Growth
+---------
+Price:
+- $99 / month
+
+Who it is for:
+- Multi-client startups, agencies, and B2B tools with active traffic.
+
+Includes:
+- Projects: up to 15
+- Master Keys: up to 15
+- Subkeys: up to 250
+- Monthly requests: 2,000,000
+- Rate limiting: Advanced (tighter policy controls + burst handling)
+- Logs: 90-day retention + richer analytics
+- Key governance: Advanced (bulk edits, stronger guardrails, audit-focused controls)
+- Alerts: Threshold notifications + quota extension workflows
+- Team members: up to 10 admins
+- Support: Priority email
+
+
+4) Business
+-----------
+Price:
+- $299 / month (base)
+
+Who it is for:
+- High-volume teams needing governance, compliance posture, and operational controls.
+
+Includes:
+- Projects: Unlimited
+- Master Keys: Unlimited
+- Subkeys: Unlimited (fair-use policy)
+- Monthly requests: 10,000,000 included
+- Overage: usage-based request overage pricing (defined in billing policy)
+- Rate limiting: Enterprise-grade policy controls
+- Logs: 1-year retention + export-ready access
+- Key governance: Enterprise policy suite + stricter operational controls
+- Team members: 25 included (expandable)
+- Support: Priority + SLA response targets
+
+
+Overage & Add-ons (Suggested)
+-----------------------------
+- Additional requests (Starter/Growth/Business): metered overage per 100k requests.
+- Additional log retention packs: optional monthly add-on.
+- Extra admin seats (Growth/Business): per-seat monthly add-on.
+- Dedicated onboarding / architecture session: one-time add-on.
+
+
+Rollout Notes (Important)
+-------------------------
+1. Launch Free + Starter first to reduce complexity.
+2. Enable Growth after Projects feature is stable.
+3. Enable Business after you finalize:
+   - SLA terms,
+   - fair-use boundaries,
+   - overage unit pricing,
+   - support staffing.
+
+
+UI Copy Snippets (Ready to paste)
+---------------------------------
+Free: "Perfect for trying KeyHive in minutes."
+Starter: "Production-ready essentials for small teams."
+Growth: "Scale subkeys, projects, and governance with confidence."
+Business: "Advanced controls and reliability for serious volume."
