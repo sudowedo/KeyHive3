@@ -33,13 +33,23 @@ async function rateLimitBySubkey(subkeyId, limit = DEFAULT_RPM_LIMIT) {
 
 fastify.get('/health', async () => ({ status: 'ok', ts: Date.now() }));
 
-function getProjectId(req, reply) {
-  const projectId = String(req.headers['x-project-id'] || '').trim();
-  if (!projectId) {
+async function getProject(req, reply) {
+  const projectRef = String(req.headers['x-project-id'] || '').trim();
+  if (!projectRef) {
     reply.code(400).send({ error: 'Missing x-project-id header' });
     return null;
   }
-  return projectId;
+  const { rows } = await query(`SELECT id,name,slug,status FROM projects WHERE id::text = $1 OR slug = $1 LIMIT 1`, [projectRef]);
+  const project = rows[0];
+  if (!project) {
+    reply.code(404).send({ error: 'project not found' });
+    return null;
+  }
+  if (project.status !== 'active') {
+    reply.code(403).send({ error: 'project is not active' });
+    return null;
+  }
+  return project;
 }
 
 fastify.get('/api/projects', async () => {
@@ -50,44 +60,47 @@ fastify.get('/api/projects', async () => {
 fastify.post('/api/projects', async (req, reply) => {
   const { name, slug = null } = req.body || {};
   if (!name) return reply.code(400).send({ error: 'name required' });
+  const { rows: countRows } = await query('SELECT COUNT(*)::int AS c FROM projects');
+  if ((countRows[0]?.c || 0) >= 2) return reply.code(400).send({ error: 'max 2 projects allowed for now' });
   const id = randomUUID();
-  await query(`INSERT INTO projects (id,name,slug,status) VALUES ($1,$2,$3,$4)`, [id, String(name).trim(), slug ? String(slug).trim() : null, 'active']);
-  return { id, name: String(name).trim(), slug: slug ? String(slug).trim() : null, status: 'active' };
+  const generatedSlug = `project-${Math.random().toString(36).slice(2, 10)}`;
+  await query(`INSERT INTO projects (id,name,slug,status) VALUES ($1,$2,$3,$4)`, [id, String(name).trim(), slug ? String(slug).trim() : generatedSlug, 'active']);
+  return { id, name: String(name).trim(), slug: slug ? String(slug).trim() : generatedSlug, status: 'active', created_at: Math.floor(Date.now()/1000) };
 });
 
 
 fastify.get('/api/master-keys', async (req, reply) => {
-  const projectId = getProjectId(req, reply); if (!projectId) return;
+  const project = await getProject(req, reply); if (!project) return;
   const { rows } = await query(`
     SELECT id, provider, name, key_masked, key_version,
            EXTRACT(EPOCH FROM created_at)::bigint AS created_at,
            EXTRACT(EPOCH FROM updated_at)::bigint AS updated_at
     FROM master_keys WHERE project_id = $1 ORDER BY created_at DESC
-  `, [projectId]);
+  `, [project.id]);
   return rows;
 });
 
 fastify.post('/api/master-keys', async (req, reply) => {
-  const projectId = getProjectId(req, reply); if (!projectId) return;
+  const project = await getProject(req, reply); if (!project) return;
   const { provider, api_key, name } = req.body || {};
   if (!provider || !api_key) return reply.code(400).send({ error: 'provider and api_key required' });
   const encrypted = encryptSecret(api_key, provider);
   await query(
     `INSERT INTO master_keys (id, project_id, provider, name, key_masked, ciphertext_b64, iv_b64, auth_tag_b64, key_version)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-    [randomUUID(), projectId, provider, name || provider, maskKey(api_key), encrypted.ciphertext_b64, encrypted.iv_b64, encrypted.auth_tag_b64, encrypted.key_version],
+    [randomUUID(), project.id, provider, name || provider, maskKey(api_key), encrypted.ciphertext_b64, encrypted.iv_b64, encrypted.auth_tag_b64, encrypted.key_version],
   );
   return { success: true };
 });
 
 
 fastify.delete('/api/master-keys/:id', async (req, reply) => {
-  const projectId = getProjectId(req, reply); if (!projectId) return;
+  const project = await getProject(req, reply); if (!project) return;
   const { id } = req.params;
   try {
     await query('BEGIN');
-    await query('UPDATE subkeys SET master_key_id = NULL WHERE master_key_id = $1 AND project_id = $2', [id, projectId]);
-    const result = await query('DELETE FROM master_keys WHERE id = $1 AND project_id = $2', [id, projectId]);
+    await query('UPDATE subkeys SET master_key_id = NULL WHERE master_key_id = $1 AND project_id = $2', [id, project.id]);
+    const result = await query('DELETE FROM master_keys WHERE id = $1 AND project_id = $2', [id, project.id]);
     await query('COMMIT');
     if (!result.rowCount) return reply.code(404).send({ error: 'master key not found' });
     return { success: true };
@@ -106,8 +119,8 @@ fastify.delete('/api/subkeys/:id', async (req, reply) => {
 });
 
 fastify.get('/api/subkeys', async (req, reply) => {
-  const projectId = getProjectId(req, reply); if (!projectId) return;
-  const { rows } = await query(`SELECT id, name, token_prefix, token_ciphertext_b64, token_iv_b64, token_auth_tag_b64, provider, master_key_id, auto_route_on_exhausted, monthly_token_limit, requests_per_minute_limit, tokens_used, status, spend_limit_usd, max_requests, request_count, allowed_models, EXTRACT(EPOCH FROM expires_at)::bigint AS expires_at, EXTRACT(EPOCH FROM created_at)::bigint AS created_at FROM subkeys WHERE project_id = $1 ORDER BY created_at DESC`, [projectId]);
+  const project = await getProject(req, reply); if (!project) return;
+  const { rows } = await query(`SELECT id, name, token_prefix, token_ciphertext_b64, token_iv_b64, token_auth_tag_b64, provider, master_key_id, auto_route_on_exhausted, monthly_token_limit, requests_per_minute_limit, tokens_used, status, spend_limit_usd, max_requests, request_count, allowed_models, EXTRACT(EPOCH FROM expires_at)::bigint AS expires_at, EXTRACT(EPOCH FROM created_at)::bigint AS created_at FROM subkeys WHERE project_id = $1 ORDER BY created_at DESC`, [project.id]);
   return rows.map((row) => {
     let token = null;
     if (row.token_ciphertext_b64 && row.token_iv_b64 && row.token_auth_tag_b64) {
@@ -158,24 +171,24 @@ fastify.patch('/api/subkeys/:id', async (req, reply) => {
 });
 
 fastify.post('/api/subkeys', async (req, reply) => {
-  const projectId = getProjectId(req, reply); if (!projectId) return;
+  const project = await getProject(req, reply); if (!project) return;
   const { name, provider, master_key_id = null, auto_route_on_exhausted = false, monthly_token_limit = 50000, max_requests = 5000, allowed_models = ['all'], spend_limit_usd = null, expires_in_days = null } = req.body || {};
   if (!name || !provider) return reply.code(400).send({ error: 'name and provider required' });
   const id = randomUUID();
   const token = `sk-kg-${randomUUID().replace(/-/g, '')}`;
   const enc = encryptSecret(token, `subkey:${id}`);
   const expiresAt = expires_in_days ? new Date(Date.now() + Number(expires_in_days) * 86400 * 1000) : null;
-  await query(`INSERT INTO subkeys (id,project_id,name,token_hash,token_prefix,token_ciphertext_b64,token_iv_b64,token_auth_tag_b64,token_key_version,provider,master_key_id,auto_route_on_exhausted,monthly_token_limit,requests_per_minute_limit,spend_limit_usd,max_requests,allowed_models,expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`, [id, projectId, name, hashToken(token), token.slice(0, 12), enc.ciphertext_b64, enc.iv_b64, enc.auth_tag_b64, enc.key_version, provider, master_key_id, Boolean(auto_route_on_exhausted), Number(monthly_token_limit) || 50000, DEFAULT_RPM_LIMIT, spend_limit_usd, Number(max_requests) || 5000, JSON.stringify(allowed_models && allowed_models.length ? allowed_models : ['all']), expiresAt]);
+  await query(`INSERT INTO subkeys (id,project_id,name,token_hash,token_prefix,token_ciphertext_b64,token_iv_b64,token_auth_tag_b64,token_key_version,provider,master_key_id,auto_route_on_exhausted,monthly_token_limit,requests_per_minute_limit,spend_limit_usd,max_requests,allowed_models,expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`, [id, project.id, name, hashToken(token), token.slice(0, 12), enc.ciphertext_b64, enc.iv_b64, enc.auth_tag_b64, enc.key_version, provider, master_key_id, Boolean(auto_route_on_exhausted), Number(monthly_token_limit) || 50000, DEFAULT_RPM_LIMIT, spend_limit_usd, Number(max_requests) || 5000, JSON.stringify(allowed_models && allowed_models.length ? allowed_models : ['all']), expiresAt]);
   return { id, name, provider, token_prefix: token.slice(0, 12), token, requests_per_minute_limit: DEFAULT_RPM_LIMIT };
 });
 
 fastify.get('/api/models', async () => ({ data: [{ id: 'gpt-4o-mini' }, { id: 'gpt-4o' }, { id: 'gpt-4.1-mini' }, { id: 'gpt-4.1' }, { id: 'gemini-2.5-flash' }, { id: 'gemini-2.5-pro' }] }));
 
 fastify.get('/api/analytics', async (req, reply) => {
-  const projectId = getProjectId(req, reply); if (!projectId) return;
+  const project = await getProject(req, reply); if (!project) return;
   const [{ rows: totals }, { rows: logs }] = await Promise.all([
-    query(`SELECT COUNT(*)::int AS total_requests, COALESCE(SUM(tokens_used),0)::int AS total_tokens FROM request_logs WHERE project_id = $1`, [projectId]),
-    query(`SELECT id,subkey_id,subkey_name,model,tokens_used,status,source,latency_ms,EXTRACT(EPOCH FROM created_at)::bigint AS created_at FROM request_logs WHERE project_id = $1 ORDER BY created_at DESC LIMIT 200`, [projectId]),
+    query(`SELECT COUNT(*)::int AS total_requests, COALESCE(SUM(tokens_used),0)::int AS total_tokens FROM request_logs WHERE project_id = $1`, [project.id]),
+    query(`SELECT id,subkey_id,subkey_name,model,tokens_used,status,source,latency_ms,EXTRACT(EPOCH FROM created_at)::bigint AS created_at FROM request_logs WHERE project_id = $1 ORDER BY created_at DESC LIMIT 200`, [project.id]),
   ]);
   const totalRequests = totals[0]?.total_requests || 0;
   const totalTokens = totals[0]?.total_tokens || 0;
