@@ -69,7 +69,7 @@ fastify.post('/api/projects', async (req, reply) => {
 });
 
 async function deleteProjectByRef(projectRef) {
-  const ref = decodeURIComponent(String(projectRef || '').trim());
+  const ref = String(projectRef || '').trim();
   if (!ref) return { success: true, deleted: false, reason: 'empty_ref' };
   const { rows } = await query('SELECT id,slug FROM projects WHERE slug = $1 OR id::text = $1 LIMIT 1', [ref]);
   const project = rows[0];
@@ -83,21 +83,21 @@ fastify.delete('/api/projects/:id', async (req, reply) => {
     return await deleteProjectByRef(req.params.id);
   } catch (err) {
     req.log.error(err);
-    return reply.code(200).send({ success: false, deleted: false, reason: 'internal_error' });
+    return reply.code(500).send({ success: false, deleted: false, reason: 'internal_error' });
   }
 });
 
 
 
 fastify.route({
-  method: ['DELETE', 'GET', 'POST'],
+  method: ['DELETE'],
   url: '/api/projects/by-slug/:slug',
   handler: async (req, reply) => {
     try {
       return await deleteProjectByRef(req.params.slug);
     } catch (err) {
       req.log.error(err);
-      return reply.code(200).send({ success: false, deleted: false, reason: 'internal_error' });
+      return reply.code(500).send({ success: false, deleted: false, reason: 'internal_error' });
     }
   },
 });

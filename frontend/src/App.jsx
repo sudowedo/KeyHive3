@@ -112,14 +112,12 @@ export default function App() {
       const ref = encodeURIComponent(projectToDelete.slug || projectToDelete.id);
       const attempts = [
         { path: `/api/projects/by-slug/${ref}`, method: 'DELETE' },
-        { path: `/api/projects/by-slug/${ref}`, method: 'POST' },
         { path: `/api/projects/${encodeURIComponent(projectToDelete.id)}`, method: 'DELETE' },
       ];
       let deleted = false;
       for (const attempt of attempts) {
         const res = await fetch(API + attempt.path, {
           method: attempt.method,
-          headers: { 'Content-Type': 'application/json' },
         });
         const data = await res.json().catch(() => ({}));
         if (res.ok && (data?.success !== false)) {
