@@ -16,6 +16,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 export default function App() {
   const [page, setPage] = useState('overview');
+  const [view, setView] = useState('select'); // select | create | console
   const [projects, setProjects] = useState([]);
   const [projectSlug, setProjectSlug] = useState('');
   const [projectName, setProjectName] = useState('');
@@ -48,7 +49,9 @@ export default function App() {
   const parsePath = () => {
     const parts = window.location.pathname.split('/').filter(Boolean);
     if (parts[0] !== 'console') return go('/console');
-    if (!parts[1]) { setProjectSlug(''); setPage('overview'); return; }
+    if (!parts[1]) { setView('select'); setProjectSlug(''); setPage('overview'); return; }
+    if (parts[1] === 'new') { setView('create'); setProjectSlug(''); setPage('overview'); return; }
+    setView('console');
     setProjectSlug(parts[1]);
     setPage(parts[2] || 'overview');
   };
@@ -57,14 +60,20 @@ export default function App() {
   useEffect(() => {
     loadProjects().then((ps) => {
       const list = ps || [];
-      if (!list.length && window.location.pathname !== '/console/new') go('/console/new');
-      if (list.length && (window.location.pathname === '/' || window.location.pathname === '/console/new')) go('/console');
-      if (projectSlug && !list.find((p) => p.slug === projectSlug || p.id === projectSlug)) go('/console');
+      if (!list.length) {
+        if (view !== 'create') go('/console/new');
+        return;
+      }
+      if (window.location.pathname === '/' || view === 'create') { go('/console'); return; }
+      if (projectSlug && !list.find((p) => p.slug === projectSlug || p.id === projectSlug)) {
+        notify('Project not found', 'error');
+        go('/console');
+      }
     }).catch((e) => notify(e.message, 'error'));
-  }, [projectSlug]);
+  }, [projectSlug, view]);
 
   useEffect(() => {
-    if (!projectSlug) return;
+    if (!projectSlug || view !== 'console') return;
     if (page === 'overview') loadOverview().catch((e) => notify(e.message, 'error'));
     if (page === 'masterkeys') loadMasterKeys().catch((e) => notify(e.message, 'error'));
     if (page === 'subkeys') loadSubkeys().catch((e) => notify(e.message, 'error'));
@@ -85,11 +94,11 @@ export default function App() {
 
   const selectedProject = projects.find((p) => p.slug === projectSlug || p.id === projectSlug);
 
-  if (window.location.pathname === '/console/new' || (!projects.length && window.location.pathname !== '/console')) {
+  if (view === 'create') {
     return <div className='page active'><div style={{ maxWidth: 620, margin: '60px auto' }}><div className='card'><div className='card-title' style={{ marginBottom: 10 }}>Create Project</div><div className='field'><label>Project Name</label><input value={projectName} onChange={(e)=>setProjectName(e.target.value)} placeholder='Acme Production' /></div><div style={{fontSize:12,color:'var(--muted)',marginTop:8}}>Project ID is auto-generated (example: project-m2zpicks).</div><div className='modal-footer'><button className='btn btn-primary' onClick={createProject}>Create Project</button></div></div></div><div className={`notif ${notif.show ? 'show' : ''} ${notif.type}`}>{notif.msg}</div></div>;
   }
 
-  if (window.location.pathname === '/console' || !projectSlug) {
+  if (view === 'select' || !projectSlug) {
     return <div className='page active'><div style={{ maxWidth: 760, margin: '40px auto' }}><div className='card'><div className='card-title' style={{ marginBottom: 12 }}>Select Project</div><div style={{display:'grid',gap:10}}>{projects.map((p)=><button key={p.id} className='btn btn-ghost' style={{justifyContent:'space-between'}} onClick={()=>go(`/console/${p.slug}/overview`)}><span>{p.name} <span style={{color:'var(--muted)',fontSize:12}}>({p.slug})</span></span><span style={{fontSize:12,color:p.status==='active'?'var(--green)':'var(--amber)'}}>{p.status}</span></button>)}</div>{projects.length<2 && <div className='modal-footer'><button className='btn btn-primary' onClick={()=>go('/console/new')}>+ New Project</button></div>}</div></div><div className={`notif ${notif.show ? 'show' : ''} ${notif.type}`}>{notif.msg}</div></div>;
   }
 
