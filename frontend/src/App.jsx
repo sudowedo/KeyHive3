@@ -20,6 +20,9 @@ export default function App() {
   const [projects, setProjects] = useState([]);
   const [projectSlug, setProjectSlug] = useState('');
   const [projectName, setProjectName] = useState('');
+  const [projectSearch, setProjectSearch] = useState('');
+  const [projectToDelete, setProjectToDelete] = useState(null);
+  const [deleteConfirm, setDeleteConfirm] = useState('');
   const [subkeys, setSubkeys] = useState([]);
   const [masterKeys, setMasterKeys] = useState([]);
   const [logs, setLogs] = useState([]);
@@ -91,6 +94,7 @@ export default function App() {
   const ctx = useMemo(() => ({ API, fmtNum, fmtTime, fmtDate, quotaColor, sleep, api, notify, copyText, modal, setModal, revealedToken, setRevealedToken, loadMasterKeys, loadSubkeys, loadLogs, loadOverview, subkeys, setSubkeys, masterKeys, logs, analytics, page }), [modal, subkeys, masterKeys, logs, analytics, revealedToken, page, projectSlug]);
 
   const createProject = async () => {
+    if (projects.length >= 3) return notify('Maximum 3 projects allowed for now', 'error');
     const p = await api('/api/projects', { method: 'POST', body: { name: projectName }, headers: {} });
     setProjectName('');
     await loadProjects();
@@ -98,6 +102,19 @@ export default function App() {
   };
 
   const selectedProject = projects.find((p) => p.slug === projectSlug || p.id === projectSlug);
+  const filteredProjects = projects.filter((p) => `${p.name} ${p.slug} ${p.id}`.toLowerCase().includes(projectSearch.toLowerCase()));
+  const expectedDeleteText = projectToDelete ? `sudo delete ${projectToDelete.slug}` : '';
+  const canDeleteProject = projectToDelete && deleteConfirm.trim() === expectedDeleteText;
+
+  const deleteProject = async () => {
+    if (!canDeleteProject || !projectToDelete) return;
+    await api(`/api/projects/${projectToDelete.slug}`, { method: 'DELETE', headers: {} });
+    setDeleteConfirm('');
+    setProjectToDelete(null);
+    notify('Project deleted');
+    const ps = await loadProjects();
+    if (!ps.length) go('/console/new'); else go('/console');
+  };
 
   if (view === 'create') {
     return <div className='page active'><div style={{ maxWidth: 620, margin: '60px auto' }}><div className='card'><div className='card-title' style={{ marginBottom: 10 }}>Create Project</div><div className='field'><label>Project Name</label><input value={projectName} onChange={(e)=>setProjectName(e.target.value)} placeholder='Acme Production' /></div><div style={{fontSize:12,color:'var(--muted)',marginTop:8}}>Project ID is auto-generated (example: project-m2zpicks).</div><div className='modal-footer'><button className='btn btn-primary' onClick={createProject}>Create Project</button></div></div></div><div className={`notif ${notif.show ? 'show' : ''} ${notif.type}`}>{notif.msg}</div></div>;
@@ -106,20 +123,51 @@ export default function App() {
   if (view === 'select' || !projectSlug) {
     return <div className='page active'><div style={{ maxWidth: 980, margin: '26px auto' }}>
       <div className='card' style={{padding:'14px 16px'}}>
+        <div className='projects-toolbar'>
+          <input className='projects-search' value={projectSearch} onChange={(e)=>setProjectSearch(e.target.value)} placeholder='Search by name, label, or ID' />
+          <button className='btn btn-primary' disabled={projects.length>=3} onClick={()=>go('/console/new')}>+ Create project</button>
+        </div>
+      </div>
+      <div className='card projects-banner'>
+        <div>
+          <div className='card-title'>Your Free plan includes up to 3 projects and limited resources.</div>
+          <button className='btn btn-ghost btn-sm' style={{marginTop:8}}>Upgrade to Pro</button>
+        </div>
+      </div>
+      <div className='card' style={{padding:'14px 16px'}}>
         <div style={{display:'flex',justifyContent:'space-between',gap:10,alignItems:'center',flexWrap:'wrap'}}>
           <div><div className='card-title'>Projects Console</div><div className='card-sub'>Choose your workspace to continue</div></div>
-          {projects.length<3 && <button className='btn btn-primary' onClick={()=>go('/console/new')}>+ New Project</button>}
+          <div style={{fontSize:12,color:'var(--muted)'}}>Total: {projects.length} / 3 projects</div>
         </div>
       </div>
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))',gap:12}}>
-        {projects.map((p)=><button key={p.id} className='card project-card' onClick={()=>go(`/console/${p.slug}/overview`)} style={{textAlign:'left'}}>
+        {filteredProjects.map((p)=><button key={p.id} className='card project-card' onClick={()=>go(`/console/${p.slug}/overview`)} style={{textAlign:'left'}}>
           <div style={{display:'flex',justifyContent:'space-between',gap:8,alignItems:'center'}}>
             <div style={{fontWeight:700,fontSize:20,color:'var(--text)'}}>{p.name}</div>
             <span className={`badge ${p.status==='active'?'active':'paused'}`}>{p.status}</span>
           </div>
           <div style={{marginTop:8,color:'var(--muted)',fontSize:12}}>{p.slug}</div>
-          <div style={{marginTop:18,fontSize:12,color:'var(--dim)'}}>Created {fmtDate(p.created_at)}</div>
+          <div style={{marginTop:18,fontSize:12,color:'var(--dim)',display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}>
+            <span>Created {fmtDate(p.created_at)}</span>
+            <span className='project-delete' onClick={(e)=>{e.stopPropagation(); setProjectToDelete(p); setDeleteConfirm('');}}>🗑️</span>
+          </div>
         </button>)}
+      </div>
+      <div className={`modal-backdrop ${projectToDelete ? 'open' : ''}`} onClick={(e) => e.target === e.currentTarget && setProjectToDelete(null)}>
+        <div className='modal'>
+          <div className='modal-title'>Delete project</div>
+          <div className='danger-box'>
+            This action is irreversible all the things related to this projects will be deleted and issued keys will stop working.
+          </div>
+          <div className='field' style={{marginTop:12}}>
+            <label>Type "{expectedDeleteText}" to continue</label>
+            <input value={deleteConfirm} onChange={(e)=>setDeleteConfirm(e.target.value)} />
+          </div>
+          <div className='modal-footer'>
+            <button className='btn btn-ghost' onClick={()=>setProjectToDelete(null)}>Cancel</button>
+            <button className='btn btn-danger' disabled={!canDeleteProject} onClick={deleteProject}>Delete project</button>
+          </div>
+        </div>
       </div>
       <div className={`notif ${notif.show ? 'show' : ''} ${notif.type}`}>{notif.msg}</div>
     </div></div>;

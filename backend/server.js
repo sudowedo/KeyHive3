@@ -68,6 +68,13 @@ fastify.post('/api/projects', async (req, reply) => {
   return { id, name: String(name).trim(), slug: slug ? String(slug).trim() : generatedSlug, status: 'active', created_at: Math.floor(Date.now()/1000) };
 });
 
+fastify.delete('/api/projects/:id', async (req, reply) => {
+  const projectRef = String(req.params.id || '').trim();
+  const { rows } = await query('DELETE FROM projects WHERE id::text = $1 OR slug = $1 RETURNING id', [projectRef]);
+  if (!rows.length) return reply.code(404).send({ error: 'project not found' });
+  return { success: true };
+});
+
 
 fastify.get('/api/master-keys', async (req, reply) => {
   const project = await getProject(req, reply); if (!project) return;

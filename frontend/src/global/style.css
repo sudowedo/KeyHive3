@@ -59,6 +59,12 @@ body{min-height:100vh;display:flex;flex-direction:column}
 .page-sub{color:var(--muted);font-size:13px;margin-top:4px}
 .project-card{cursor:pointer;transition:transform .2s ease,border-color .2s ease}
 .project-card:hover{transform:translateY(-2px);border-color:#8f84ff66}
+.project-delete{font-size:15px;opacity:.8}
+.project-delete:hover{opacity:1}
+.projects-toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.projects-search{flex:1;min-width:220px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:10px 12px;color:var(--text)}
+.projects-banner{border-color:#ffffff24}
+.danger-box{background:#ff525226;border:1px solid #ff52526b;color:#fff;border-radius:10px;padding:12px;font-size:13px;line-height:1.5}
 .console-header{position:sticky;top:0;z-index:45;display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 22px;margin:0 0 10px;border:1px solid #ffffff14;border-left:none;border-right:none;border-radius:0;background:linear-gradient(160deg,#161726f2,#10121cf0);backdrop-filter:blur(8px)}
 .console-title{font-family:'Syne',sans-serif;font-size:18px;font-weight:700}
 .console-sub{font-size:12px;color:var(--muted);font-family:'DM Mono',monospace}
@@ -284,4 +290,6 @@ tr:hover td{background:#ffffff04}
   .mobile-tabbar{gap:6px;padding:8px}
   .console-header{margin:0 0 8px;padding:10px 12px}
   .console-title{font-size:16px}
+  .projects-toolbar .btn{width:100%}
+  .projects-search{min-width:100%}
 }
