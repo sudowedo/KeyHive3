@@ -76,20 +76,14 @@ fastify.delete('/api/projects/:id', async (req, reply) => {
     const project = rows[0];
     if (!project) return reply.code(404).send({ error: 'project not found' });
 
-    await query('BEGIN');
-    await query('DELETE FROM request_logs WHERE project_id = $1', [project.id]);
-    await query('DELETE FROM quota_requests WHERE project_id = $1', [project.id]);
-    await query('DELETE FROM subkeys WHERE project_id = $1', [project.id]);
-    await query('DELETE FROM master_keys WHERE project_id = $1', [project.id]);
     await query('DELETE FROM projects WHERE id = $1', [project.id]);
-    await query('COMMIT');
     return { success: true };
   } catch (err) {
-    await query('ROLLBACK').catch(() => {});
     if (/invalid input syntax for type uuid/i.test(String(err?.message || ''))) {
       return reply.code(400).send({ error: 'invalid project id' });
     }
-    return reply.code(400).send({ error: err?.message || 'failed to delete project' });
+    req.log.error(err);
+    return reply.code(500).send({ error: 'failed to delete project' });
   }
 });
 
@@ -253,9 +247,10 @@ fastify.patch('/api/quota-requests/:id', async (req, reply) => {
 });
 
 fastify.post('/api/quota-requests', async (req, reply) => {
+  const project = await getProject(req, reply); if (!project) return;
   const { subkey_id, request_type, amount = null, note = '' } = req.body || {};
   if (!subkey_id || !request_type) return reply.code(400).send({ error: 'subkey_id and request_type required' });
-  await query(`INSERT INTO quota_requests (id,subkey_id,request_type,amount,note,status) VALUES ($1,$2,$3,$4,$5,$6)`, [randomUUID(), subkey_id, request_type, amount ? String(amount) : null, note, 'pending']);
+  await query(`INSERT INTO quota_requests (id,project_id,subkey_id,request_type,amount,note,status) VALUES ($1,$2,$3,$4,$5,$6,$7)`, [randomUUID(), project.id, subkey_id, request_type, amount ? String(amount) : null, note, 'pending']);
   return { success: true };
 });
 
