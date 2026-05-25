@@ -23,6 +23,7 @@ export default function App() {
   const [projectSearch, setProjectSearch] = useState('');
   const [projectToDelete, setProjectToDelete] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState('');
+  const [showPlanBanner, setShowPlanBanner] = useState(true);
   const [subkeys, setSubkeys] = useState([]);
   const [masterKeys, setMasterKeys] = useState([]);
   const [logs, setLogs] = useState([]);
@@ -142,13 +143,20 @@ export default function App() {
 
   if (view === 'select' || !projectSlug) {
     return <div className='page active'><div style={{ maxWidth: 980, margin: '26px auto' }}>
+      <div className='console-hero'>
+        <div>
+          <div className='console-title'>Projects Console</div>
+          <div className='console-sub'>Create, organize, and switch between isolated workspaces.</div>
+        </div>
+      </div>
       <div className='card' style={{padding:'14px 16px'}}>
         <div className='projects-toolbar'>
           <input className='projects-search' value={projectSearch} onChange={(e)=>setProjectSearch(e.target.value)} placeholder='Search by name, label, or ID' />
           <button className='btn btn-primary' disabled={projects.length>=3} onClick={()=>go('/console/new')}>+ Create project</button>
         </div>
       </div>
-      <div className='card projects-banner'>
+      <div className={`card projects-banner ${showPlanBanner ? '' : 'hidden'}`}>
+        <button className='banner-close' onClick={() => setShowPlanBanner(false)} aria-label='Close banner'>✕</button>
         <div>
           <div className='card-title'>Your Free plan includes up to 3 projects and limited resources.</div>
           <button className='btn btn-ghost btn-sm' style={{marginTop:8}}>Upgrade to Pro</button>
@@ -199,8 +207,8 @@ export default function App() {
       <main className='main'>
         <div className='console-header'>
           <div>
-            <div className='console-title'>{selectedProject?.name || 'Project'}</div>
-            <div className='console-sub'>{selectedProject?.slug || projectSlug}</div>
+            <div className='console-title'>{selectedProject?.name || 'Project'} • {String(page || 'overview').replace(/^./, (m)=>m.toUpperCase())}</div>
+            <div className='console-sub'>{selectedProject?.slug || projectSlug} · API Access Manager</div>
           </div>
           <button className='btn btn-ghost btn-sm' onClick={() => go('/console')}>Switch project</button>
         </div>
