@@ -1,5 +1,6 @@
 'use strict';
 
+require('dotenv').config();
 const { Pool } = require('pg');
 const crypto = require('crypto');
 
@@ -16,8 +17,10 @@ function createPoolConfig() {
   };
 
   // Only set password when actually provided. Passing undefined triggers SCRAM errors.
-  if (typeof process.env.PGPASSWORD === 'string' && process.env.PGPASSWORD.length > 0) {
-    config.password = process.env.PGPASSWORD;
+  const pgPasswordRaw = process.env.PGPASSWORD || process.env.POSTGRES_PASSWORD || process.env.DB_PASSWORD || process.env.POSTGRESQL_PASSWORD || process.env.PGPASS || '';
+  const pgPassword = typeof pgPasswordRaw === 'string' ? pgPasswordRaw.trim() : '';
+  if (pgPassword.length > 0) {
+    config.password = pgPassword;
   }
 
   return config;
@@ -140,9 +143,9 @@ async function initDb() {
       );
     `);
   } catch (err) {
-    if (err && /client password must be a string/i.test(err.message || '')) {
+    if (err && /client password must be a string|no password supplied|SASL|SCRAM/i.test(err.message || '')) {
       throw new Error(
-        'PostgreSQL auth failed: set PGPASSWORD (or DATABASE_URL including password) to a non-empty string for SCRAM-enabled servers.'
+        'PostgreSQL auth failed. Set one of PGPASSWORD, POSTGRES_PASSWORD, DB_PASSWORD, POSTGRESQL_PASSWORD, PGPASS, or a DATABASE_URL with a non-empty password. Also ensure the .env file is loaded from the backend process working directory.'
       );
     }
     throw err;
