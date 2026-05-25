@@ -239,19 +239,19 @@ fastify.post('/v1/chat/completions', async (req, reply) => {
   const bearer = (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
   if (!bearer) return reply.code(401).send({ error: { message: 'Missing Authorization header.', type: 'auth_error' } });
 
-  const { rows } = await query(`SELECT id,name,provider,master_key_id,auto_route_on_exhausted,status,requests_per_minute_limit,max_requests,request_count,monthly_token_limit,tokens_used,expires_at,allowed_models FROM subkeys WHERE token_hash = $1`, [hashToken(bearer)]);
+  const { rows } = await query(`SELECT id,project_id,name,provider,master_key_id,auto_route_on_exhausted,status,requests_per_minute_limit,max_requests,request_count,monthly_token_limit,tokens_used,expires_at,allowed_models FROM subkeys WHERE token_hash = $1`, [hashToken(bearer)]);
   const subkey = rows[0];
   if (!subkey) return reply.code(401).send({ error: { message: 'Invalid subkey.', type: 'auth_error' } });
   if (subkey.status !== 'active') return reply.code(403).send({ error: { message: `Subkey is ${subkey.status}.`, type: 'permission_error' } });
   if (subkey.expires_at && new Date(subkey.expires_at).getTime() < Date.now()) return reply.code(403).send({ error: { message: 'Subkey expired.', type: 'permission_error' } });
   if (Number(subkey.request_count || 0) >= Number(subkey.max_requests || 5000)) {
-    await query(`INSERT INTO request_logs (id,subkey_id,subkey_name,model,tokens_used,status,source,latency_ms) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, [randomUUID(), subkey.id, subkey.name, (req.body||{}).model || null, 0, 'max_requests_reached', req.headers['x-keygate-client'] || 'external', Date.now() - started]);
+    await query(`INSERT INTO request_logs (id,project_id,subkey_id,subkey_name,model,tokens_used,status,source,latency_ms) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`, [randomUUID(), subkey.project_id, subkey.id, subkey.name, (req.body||{}).model || null, 0, 'max_requests_reached', req.headers['x-keygate-client'] || 'external', Date.now() - started]);
     return reply.code(403).send({ error: { message: 'Max requests reached.', type: 'permission_error' } });
   }
 
 
   if (Number(subkey.tokens_used || 0) >= Number(subkey.monthly_token_limit || 0)) {
-    await query(`INSERT INTO request_logs (id,subkey_id,subkey_name,model,tokens_used,status,source,latency_ms) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, [randomUUID(), subkey.id, subkey.name, (req.body||{}).model || null, 0, 'quota_reached', req.headers['x-keygate-client'] || 'external', Date.now() - started]);
+    await query(`INSERT INTO request_logs (id,project_id,subkey_id,subkey_name,model,tokens_used,status,source,latency_ms) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`, [randomUUID(), subkey.project_id, subkey.id, subkey.name, (req.body||{}).model || null, 0, 'quota_reached', req.headers['x-keygate-client'] || 'external', Date.now() - started]);
     return reply.code(403).send({
       error: {
         message: 'Quota reached for this subkey. Please use /api/quota-requests endpoint to request a quota extension.',
@@ -266,8 +266,8 @@ fastify.post('/v1/chat/completions', async (req, reply) => {
   if (!rate.allowed) return reply.code(429).send({ code: 'RATE_LIMIT_EXCEEDED', message: 'Too many requests. Try again later.' });
 
   const mkQuery = subkey.master_key_id
-    ? query('SELECT * FROM master_keys WHERE id = $1 AND provider = $2 LIMIT 1', [subkey.master_key_id, subkey.provider])
-    : query('SELECT * FROM master_keys WHERE provider = $1 ORDER BY created_at DESC LIMIT 1', [subkey.provider]);
+    ? query('SELECT * FROM master_keys WHERE id = $1 AND provider = $2 AND project_id = $3 LIMIT 1', [subkey.master_key_id, subkey.provider, subkey.project_id])
+    : query('SELECT * FROM master_keys WHERE provider = $1 AND project_id = $2 ORDER BY created_at DESC LIMIT 1', [subkey.provider, subkey.project_id]);
   const { rows: mkRows } = await mkQuery;
   const mk = mkRows[0];
   if (!mk) return reply.code(400).send({ error: { message: `No master key found for provider ${subkey.provider}.`, type: 'config_error' } });
@@ -298,7 +298,7 @@ fastify.post('/v1/chat/completions', async (req, reply) => {
     status = 'error'; responseBody = { error: { message: e.message || 'Upstream request failed', type: 'upstream_error' } }; statusCode = 502;
   }
 
-  await query(`INSERT INTO request_logs (id,subkey_id,subkey_name,model,tokens_used,status,source,latency_ms) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, [randomUUID(), subkey.id, subkey.name, payload.model || null, tokensUsed, status, req.headers['x-keygate-client'] || 'external', Date.now() - started]);
+  await query(`INSERT INTO request_logs (id,project_id,subkey_id,subkey_name,model,tokens_used,status,source,latency_ms) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`, [randomUUID(), subkey.project_id, subkey.id, subkey.name, payload.model || null, tokensUsed, status, req.headers['x-keygate-client'] || 'external', Date.now() - started]);
   await query(`UPDATE subkeys SET tokens_used = COALESCE(tokens_used,0) + $1, request_count = COALESCE(request_count,0) + 1 WHERE id = $2`, [tokensUsed, subkey.id]);
   return reply.code(statusCode).send(responseBody);
 });
