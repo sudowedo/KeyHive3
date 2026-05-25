@@ -143,7 +143,7 @@ export default function App() {
 
   if (view === 'select' || !projectSlug) {
     return <div className='page active'><div style={{ maxWidth: 980, margin: '26px auto' }}>
-      <div className='console-hero'>
+      <div className='console-select-header'>
         <div>
           <div className='console-title'>Projects Console</div>
           <div className='console-sub'>Create, organize, and switch between isolated workspaces.</div>
