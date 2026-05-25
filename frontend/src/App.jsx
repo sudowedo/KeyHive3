@@ -108,7 +108,7 @@ export default function App() {
 
   const deleteProject = async () => {
     if (!canDeleteProject || !projectToDelete) return;
-    await api(`/api/projects/${projectToDelete.slug}`, { method: 'DELETE', headers: {} });
+    await api(`/api/projects/${encodeURIComponent(projectToDelete.slug)}`, { method: 'DELETE', headers: {} });
     setDeleteConfirm('');
     setProjectToDelete(null);
     notify('Project deleted');

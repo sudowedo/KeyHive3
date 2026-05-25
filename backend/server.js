@@ -69,10 +69,20 @@ fastify.post('/api/projects', async (req, reply) => {
 });
 
 fastify.delete('/api/projects/:id', async (req, reply) => {
-  const projectRef = String(req.params.id || '').trim();
-  const { rows } = await query('DELETE FROM projects WHERE id::text = $1 OR slug = $1 RETURNING id', [projectRef]);
-  if (!rows.length) return reply.code(404).send({ error: 'project not found' });
-  return { success: true };
+  const projectRef = decodeURIComponent(String(req.params.id || '').trim());
+  if (!projectRef) return reply.code(400).send({ error: 'project id/slug required' });
+  try {
+    const bySlug = await query('DELETE FROM projects WHERE slug = $1 RETURNING id', [projectRef]);
+    if (bySlug.rows.length) return { success: true };
+    const byId = await query('DELETE FROM projects WHERE id::text = $1 RETURNING id', [projectRef]);
+    if (!byId.rows.length) return reply.code(404).send({ error: 'project not found' });
+    return { success: true };
+  } catch (err) {
+    if (/invalid input syntax for type uuid/i.test(String(err?.message || ''))) {
+      return reply.code(400).send({ error: 'invalid project id' });
+    }
+    throw err;
+  }
 });
 
 

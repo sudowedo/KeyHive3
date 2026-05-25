@@ -114,6 +114,8 @@ tr:hover td{background:#ffffff04}
 .btn-ghost:hover{background:var(--bg3);color:var(--text)}
 .btn-danger{background:transparent;color:var(--red);border-color:#ff525220}
 .btn-danger:hover{background:#ff525210}
+.btn:disabled{opacity:.45;cursor:not-allowed;filter:saturate(.5)}
+.btn-danger:disabled{background:#ff525214;border-color:#ff525236;color:#ff8c8c}
 .btn-sm{padding:5px 10px;font-size:12px}
 .btn-amber{background:transparent;color:var(--amber);border-color:#ffb54720}
 .btn-amber:hover{background:#ffb54710}
