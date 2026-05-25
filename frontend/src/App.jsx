@@ -68,7 +68,8 @@ export default function App() {
         if (view !== 'create') go('/console/new');
         return;
       }
-      if (window.location.pathname === '/' || view === 'create') { go('/console'); return; }
+      if (window.location.pathname === '/') { go('/console'); return; }
+      if (view === 'create' && list.length >= 3) { go('/console'); return; }
       if (projectSlug && !list.find((p) => p.slug === projectSlug || p.id === projectSlug)) {
         notify('Project not found', 'error');
         go('/console');
@@ -113,7 +114,7 @@ export default function App() {
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(280px,1fr))',gap:12}}>
         {projects.map((p)=><button key={p.id} className='card project-card' onClick={()=>go(`/console/${p.slug}/overview`)} style={{textAlign:'left'}}>
           <div style={{display:'flex',justifyContent:'space-between',gap:8,alignItems:'center'}}>
-            <div style={{fontWeight:700,fontSize:20}}>{p.name}</div>
+            <div style={{fontWeight:700,fontSize:20,color:'var(--text)'}}>{p.name}</div>
             <span className={`badge ${p.status==='active'?'active':'paused'}`}>{p.status}</span>
           </div>
           <div style={{marginTop:8,color:'var(--muted)',fontSize:12}}>{p.slug}</div>
