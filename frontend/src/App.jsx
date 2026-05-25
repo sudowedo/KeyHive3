@@ -103,12 +103,12 @@ export default function App() {
 
   const selectedProject = projects.find((p) => p.slug === projectSlug || p.id === projectSlug);
   const filteredProjects = projects.filter((p) => `${p.name} ${p.slug} ${p.id}`.toLowerCase().includes(projectSearch.toLowerCase()));
-  const expectedDeleteText = projectToDelete ? `sudo delete ${projectToDelete.slug}` : '';
+  const expectedDeleteText = projectToDelete ? `sudo delete ${projectToDelete.id}` : '';
   const canDeleteProject = projectToDelete && deleteConfirm.trim() === expectedDeleteText;
 
   const deleteProject = async () => {
     if (!canDeleteProject || !projectToDelete) return;
-    await api(`/api/projects/${encodeURIComponent(projectToDelete.slug)}`, { method: 'DELETE', headers: {} });
+    await api(`/api/projects/${encodeURIComponent(projectToDelete.id)}`, { method: 'DELETE', headers: {} });
     setDeleteConfirm('');
     setProjectToDelete(null);
     notify('Project deleted');
