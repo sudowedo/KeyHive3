@@ -73,6 +73,15 @@ body{min-height:100vh;display:flex;flex-direction:column}
 .console-sub{font-size:12px;color:var(--muted);font-family:'DM Mono',monospace}
 .console-hero{padding:16px 18px;border:1px solid #ffffff1f;border-radius:14px;background:linear-gradient(145deg,#181b31cf,#101426d1);box-shadow:0 10px 26px #03051052;margin-bottom:14px}
 .console-select-header{position:sticky;top:0;z-index:42;padding:16px 18px;border:1px solid #ffffff1f;border-radius:14px;background:linear-gradient(145deg,#181b31f0,#101426f2);box-shadow:0 10px 26px #03051052;margin-bottom:14px}
+.console-shell-header{position:sticky;top:0;z-index:46;background:linear-gradient(110deg,#1a1f38f2,#111528f0 55%,#10121ef0);border-bottom:1px solid #ffffff1f;padding:12px 24px;margin:0 0 12px}
+.console-shell-row{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;min-height:54px}
+.console-shell-title{font-family:'Syne',sans-serif;font-size:20px;font-weight:700}
+.console-shell-sub{font-size:12px;color:var(--muted)}
+.console-shell-meta{font-size:12px;color:var(--accent2);font-family:'DM Mono',monospace;margin-top:4px}
+.console-shell-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.console-shell-search{width:260px}
+.console-shell-secondary{display:flex;align-items:center;gap:10px;margin-top:8px}
+.console-shell-secondary-text{font-size:12px;color:var(--muted)}
 
 /* ── Cards ── */
 .card{background:linear-gradient(165deg,#141420dd,#10101ad9);border:1px solid #ffffff17;border-radius:14px;padding:20px 22px;margin-bottom:16px;box-shadow:0 8px 24px #04050f4d,inset 0 1px 0 #ffffff14}
@@ -261,8 +270,8 @@ tr:hover td{background:#ffffff04}
   }
   .mobile-tab.active{background:linear-gradient(150deg,#7c6bff55,#9f76ff33);color:var(--text);border-color:#9a8fff99;transform:translateY(-2px)}
   .main{min-height:calc(100dvh - 72px)}
-  .console-header{display:none}
-  .console-select-header{position:static}
+  .console-header,.console-select-header{display:none}
+  .console-shell-header{display:none}
   .page{max-width:100%;padding:18px 14px}
   .page > div{padding:0 !important;max-width:100%;margin:0 auto}
   .action-grid{grid-template-columns:1fr;min-width:140px}

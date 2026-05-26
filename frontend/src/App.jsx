@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
+import useConsoleRouteState from './hooks/useConsoleRouteState';
+import ConsoleShellHeader from './components/parts/ConsoleShellHeader';
 import Sidebar from './components/parts/Sidebar';
 import OverviewPage from './components/pages/OverviewPage';
 import MasterKeysPage from './components/pages/MasterKeysPage';
@@ -15,10 +17,8 @@ const quotaColor = (used, limit) => (((used / limit) * 100 > 90) ? 'over' : ((us
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 export default function App() {
-  const [page, setPage] = useState('overview');
-  const [view, setView] = useState('select'); // select | create | console
+  const { page, view, projectSlug, go } = useConsoleRouteState();
   const [projects, setProjects] = useState([]);
-  const [projectSlug, setProjectSlug] = useState('');
   const [projectName, setProjectName] = useState('');
   const [projectSearch, setProjectSearch] = useState('');
   const [projectToDelete, setProjectToDelete] = useState(null);
@@ -53,18 +53,6 @@ export default function App() {
   const loadSubkeys = async () => setSubkeys(await api('/api/subkeys'));
   const loadLogs = async () => { const an = await api('/api/analytics'); setLogs(an.logs || []); setAnalytics(an); };
 
-  const go = (path) => { window.history.pushState({}, '', path); parsePath(); };
-  const parsePath = () => {
-    const parts = window.location.pathname.split('/').filter(Boolean);
-    if (parts[0] !== 'console') return go('/console');
-    if (!parts[1]) { setView('select'); setProjectSlug(''); setPage('overview'); return; }
-    if (parts[1] === 'new') { setView('create'); setProjectSlug(''); setPage('overview'); return; }
-    setView('console');
-    setProjectSlug(parts[1]);
-    setPage(parts[2] || 'overview');
-  };
-
-  useEffect(() => { const h = () => parsePath(); window.addEventListener('popstate', h); parsePath(); return () => window.removeEventListener('popstate', h); }, []);
   useEffect(() => {
     loadProjects().then((ps) => {
       const list = ps || [];
@@ -143,15 +131,15 @@ export default function App() {
 
   if (view === 'select' || !projectSlug) {
     return <div className='page active'><div style={{ maxWidth: 980, margin: '26px auto' }}>
-      <div className='console-select-header'>
-        <div>
-          <div className='console-title'>Projects Console</div>
-          <div className='console-sub'>Create, organize, and switch between isolated workspaces.</div>
-        </div>
-      </div>
+      <ConsoleShellHeader
+        isProjectView={false}
+        projectsCount={projects.length}
+        searchValue={projectSearch}
+        onSearchChange={setProjectSearch}
+        onNewProject={() => go('/console/new')}
+      />
       <div className='card' style={{padding:'14px 16px'}}>
         <div className='projects-toolbar'>
-          <input className='projects-search' value={projectSearch} onChange={(e)=>setProjectSearch(e.target.value)} placeholder='Search by name, label, or ID' />
           <button className='btn btn-primary' disabled={projects.length>=3} onClick={()=>go('/console/new')}>+ Create project</button>
         </div>
       </div>
@@ -205,13 +193,15 @@ export default function App() {
     <div className='app'>
       <Sidebar page={page} navigate={navigate} onBackToConsole={() => go('/console')} />
       <main className='main'>
-        <div className='console-header'>
-          <div>
-            <div className='console-title'>{selectedProject?.name || 'Project'} • {String(page || 'overview').replace(/^./, (m)=>m.toUpperCase())}</div>
-            <div className='console-sub'>{selectedProject?.slug || projectSlug} · API Access Manager</div>
-          </div>
-          <button className='btn btn-ghost btn-sm' onClick={() => go('/console')}>Switch project</button>
-        </div>
+        <ConsoleShellHeader
+          isProjectView
+          project={selectedProject}
+          projectSlug={projectSlug}
+          page={page}
+          projectsCount={projects.length}
+          onSwitchProject={() => go('/console')}
+          onNewProject={() => go('/console/new')}
+        />
         <div key={page} className='page-transition'>
           {page === 'overview' && <OverviewPage navigate={navigate} ctx={ctx} />}
           {page === 'masterkeys' && <MasterKeysPage ctx={ctx} />}
