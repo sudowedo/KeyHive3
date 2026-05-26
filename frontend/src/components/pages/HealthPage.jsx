@@ -15,13 +15,15 @@ export default function HealthPage({ ctx }) {
     d.setHours(0, 0, 0, 0);
     d.setDate(d.getDate() - (89 - idx));
     const key = d.toISOString().slice(0, 10);
-    return byDay.get(key) || { day: key, internal_ok: false, db_ok: false, redis_ok: false, details: { missing_record: true } };
+    return byDay.get(key) || { day: key, internal_ok: null, db_ok: null, redis_ok: null, details: { missing_record: true } };
   });
-  const colorFor = (r) => (r.internal_ok ? '#2dca72' : (r.db_ok || r.redis_ok ? '#ffb547' : '#ff5252'));
-  const upDays = bars.filter((r) => r.internal_ok).length;
-  const pct = bars.length ? ((upDays / bars.length) * 100).toFixed(2) : '0.00';
-  const summary = bars.length && bars[bars.length - 1].internal_ok ? 'Operational' : (bars[bars.length - 1].db_ok || bars[bars.length - 1].redis_ok ? 'Degraded' : 'Down');
-  const summaryBg = summary === 'Operational' ? '#2dca7228' : summary === 'Degraded' ? '#ffb54728' : '#ff525228';
+  const colorFor = (r) => (r.internal_ok === true ? '#2dca72' : (r.internal_ok === false ? ((r.db_ok || r.redis_ok) ? '#ffb547' : '#ff5252') : '#4b5563'));
+  const knownDays = bars.filter((r) => r.internal_ok !== null);
+  const upDays = knownDays.filter((r) => r.internal_ok).length;
+  const pct = knownDays.length ? ((upDays / knownDays.length) * 100).toFixed(2) : 'N/A';
+  const latestKnown = [...bars].reverse().find((r) => r.internal_ok !== null);
+  const summary = !latestKnown ? 'No data yet' : (latestKnown.internal_ok ? 'Operational' : ((latestKnown.db_ok || latestKnown.redis_ok) ? 'Degraded' : 'Down'));
+  const summaryBg = summary === 'Operational' ? '#2dca7228' : summary === 'Degraded' ? '#ffb54728' : summary === 'Down' ? '#ff525228' : '#4b556328';
 
   const refreshNow = async () => {
     setRefreshing(true);
@@ -46,9 +48,10 @@ export default function HealthPage({ ctx }) {
         <span><span style={{display:'inline-block',width:10,height:10,background:'#2dca72',borderRadius:2,marginRight:6}} />Operational</span>
         <span><span style={{display:'inline-block',width:10,height:10,background:'#ffb547',borderRadius:2,marginRight:6}} />Degraded</span>
         <span><span style={{display:'inline-block',width:10,height:10,background:'#ff5252',borderRadius:2,marginRight:6}} />Down</span>
+        <span><span style={{display:'inline-block',width:10,height:10,background:'#4b5563',borderRadius:2,marginRight:6}} />No data</span>
       </div>
       <div style={{display:'grid',gridTemplateColumns:'repeat(90,1fr)',gap:3}}>
-        {bars.map((r, i) => <div key={i} title={`${r.day}\nInternal: ${r.internal_ok ? 'OK' : 'FAIL'}\nDB: ${r.db_ok ? 'OK' : 'FAIL'}\nRedis: ${r.redis_ok ? 'OK' : 'FAIL'}\nDetails: ${JSON.stringify(r.details || {})}`} style={{height:28, borderRadius:3, background:colorFor(r)}} />)}
+        {bars.map((r, i) => <div key={i} title={`${r.day}\nInternal: ${r.internal_ok === null ? 'N/A' : (r.internal_ok ? 'OK' : 'FAIL')}\nDB: ${r.db_ok === null ? 'N/A' : (r.db_ok ? 'OK' : 'FAIL')}\nRedis: ${r.redis_ok === null ? 'N/A' : (r.redis_ok ? 'OK' : 'FAIL')}\nDetails: ${JSON.stringify(r.details || {})}`} style={{height:28, borderRadius:3, background:colorFor(r)}} />)}
       </div>
     </div>
   </div></div>;
