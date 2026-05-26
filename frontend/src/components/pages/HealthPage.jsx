@@ -9,12 +9,19 @@ export default function HealthPage({ ctx }) {
     api('/api/health').then(setRows).catch(() => setRows([]));
   }, []);
 
-  const byDay = new Map(rows.map((r) => [String(r.day), r]));
+  const dayKey = (d) => {
+    const dt = new Date(d);
+    const y = dt.getFullYear();
+    const m = String(dt.getMonth() + 1).padStart(2, '0');
+    const day = String(dt.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+  const byDay = new Map(rows.map((r) => [dayKey(r.day), r]));
   const bars = Array.from({ length: 90 }).map((_, idx) => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
     d.setDate(d.getDate() - (89 - idx));
-    const key = d.toISOString().slice(0, 10);
+    const key = dayKey(d);
     return byDay.get(key) || { day: key, internal_ok: null, db_ok: null, redis_ok: null, details: { missing_record: true } };
   });
   const colorFor = (r) => (r.internal_ok === true ? '#2dca72' : (r.internal_ok === false ? ((r.db_ok || r.redis_ok) ? '#ffb547' : '#ff5252') : '#4b5563'));
