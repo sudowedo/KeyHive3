@@ -36,8 +36,13 @@ export default function App() {
   const copyText = (text) => navigator.clipboard.writeText(text).then(() => notify('Copied to clipboard'));
 
   const api = async (path, opts = {}) => {
-    const headers = { 'Content-Type': 'application/json', ...(projectSlug ? { 'x-project-id': projectSlug } : {}), ...opts.headers };
-    const res = await fetch(API + path, { ...opts, headers, body: opts.body ? JSON.stringify(opts.body) : undefined });
+    const hasBody = opts.body !== undefined;
+    const headers = {
+      ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
+      ...(projectSlug ? { 'x-project-id': projectSlug } : {}),
+      ...opts.headers
+    };
+    const res = await fetch(API + path, { ...opts, headers, body: hasBody ? JSON.stringify(opts.body) : undefined });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data?.error?.message || data?.error || `HTTP ${res.status}`);
     return data;

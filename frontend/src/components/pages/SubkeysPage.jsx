@@ -26,6 +26,8 @@ export default function SubkeysPage({ ctx }) {
 
   const createSubkey = async () => {
     if (!name.trim()) return notify('Enter a name', 'error');
+    const providerKeys = masterKeys.filter((mk) => mk.provider === provider);
+    if (!providerKeys.length) return notify('Add a Master Key first', 'error');
     const allowed_models = selectedModels.includes('all') ? ['all'] : selectedModels;
     const sk = await api('/api/subkeys', {
       method: 'POST',
