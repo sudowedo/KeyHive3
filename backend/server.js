@@ -35,6 +35,11 @@ async function rateLimitBySubkey(subkeyId, limit = DEFAULT_RPM_LIMIT) {
 
 fastify.addHook('onRequest', async (req) => {
   req.reqId = randomUUID();
+  req._startedAt = Date.now();
+});
+fastify.addHook('onResponse', async (req, reply) => {
+  const ms = Date.now() - (req._startedAt || Date.now());
+  req.log.info({ reqId: req.reqId, method: req.method, path: req.url, status: reply.statusCode, ms }, 'request metrics');
 });
 
 fastify.setErrorHandler(async (err, req, reply) => {
@@ -73,8 +78,25 @@ fastify.get('/api/health', async () => {
   return rows.reverse();
 });
 
-fastify.get('/api/admin/error-logs', async () => {
-  const { rows } = await query(`SELECT id,request_id,method,path,message,EXTRACT(EPOCH FROM created_at)::bigint AS created_at FROM app_error_logs ORDER BY created_at DESC LIMIT 100`);
+fastify.get('/api/admin/error-logs', async (req) => {
+  const limitRaw = Number(req.query?.limit || 100);
+  const limit = Math.max(1, Math.min(500, Number.isFinite(limitRaw) ? Math.round(limitRaw) : 100));
+  const before = req.query?.before ? Number(req.query.before) : null;
+  if (before && Number.isFinite(before)) {
+    const { rows } = await query(
+      `SELECT id,request_id,method,path,message,EXTRACT(EPOCH FROM created_at)::bigint AS created_at
+       FROM app_error_logs
+       WHERE EXTRACT(EPOCH FROM created_at)::bigint < $1
+       ORDER BY created_at DESC LIMIT $2`,
+      [before, limit],
+    );
+    return rows;
+  }
+  const { rows } = await query(
+    `SELECT id,request_id,method,path,message,EXTRACT(EPOCH FROM created_at)::bigint AS created_at
+     FROM app_error_logs ORDER BY created_at DESC LIMIT $1`,
+    [limit],
+  );
   return rows;
 });
 
@@ -449,11 +471,19 @@ async function start() {
     stack TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`);
-  const { rows: schemaCheck } = await query(`SELECT EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_name='projects' AND column_name='slug'
-  ) AS ok`);
-  if (!schemaCheck[0]?.ok) throw new Error('Schema drift detected. Re-apply migrations from backend/migrations/*.sql');
+  const { rows: schemaChecks } = await query(`
+    SELECT
+      EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='projects') AS projects_ok,
+      EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='subkeys' AND column_name='token_ciphertext_b64') AS subkeys_token_cipher_ok,
+      EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='subkeys' AND column_name='token_iv_b64') AS subkeys_token_iv_ok,
+      EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='subkeys' AND column_name='token_auth_tag_b64') AS subkeys_token_tag_ok,
+      EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='health_daily') AS health_ok,
+      EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='app_error_logs') AS error_logs_ok
+  `);
+  const c = schemaChecks[0] || {};
+  if (!(c.projects_ok && c.subkeys_token_cipher_ok && c.subkeys_token_iv_ok && c.subkeys_token_tag_ok && c.health_ok && c.error_logs_ok)) {
+    throw new Error('Schema drift detected. Apply migrations in order: 001_initial_postgres.sql, 002_health_monitoring.sql, 003_request_error_logs.sql');
+  }
 
   const writeDailyHealth = async () => {
     let db_ok = false; let redis_ok = false;
