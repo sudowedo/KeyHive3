@@ -267,6 +267,7 @@ fastify.get('/api/subkeys/:id/demo-token', async (req, reply) => {
 fastify.patch('/api/subkeys/:id', {
   schema: { params: { type: 'object', required: ['id'], properties: { id: { type: 'string' } } } },
 }, async (req, reply) => {
+  const project = await getProject(req, reply); if (!project) return;
   const { id } = req.params;
   const body = req.body || {};
   const updates = [];
@@ -302,8 +303,10 @@ fastify.patch('/api/subkeys/:id', {
 
   if (!updates.length) return reply.code(400).send({ error: 'no editable fields provided' });
   values.push(id);
-  await query(`UPDATE subkeys SET ${updates.join(', ')} WHERE id = $${values.length}`, values);
-  return { success: true };
+  values.push(project.id);
+  const { rows } = await query(`UPDATE subkeys SET ${updates.join(', ')} WHERE id = $${values.length - 1} AND project_id = $${values.length} RETURNING id,name,provider,monthly_token_limit,max_requests,status,EXTRACT(EPOCH FROM expires_at)::bigint AS expires_at`, values);
+  if (!rows[0]) return reply.code(404).send(ERR('SUBKEY_NOT_FOUND', 'subkey not found'));
+  return { success: true, subkey: rows[0] };
 });
 
 fastify.post('/api/subkeys', {
@@ -420,6 +423,10 @@ fastify.post('/v1/chat/completions', async (req, reply) => {
 
   const providerKey = decryptSecret(mk, subkey.provider);
   const payload = req.body || {};
+  const modelProviderExpected = String(payload.model || '').startsWith('gemini') ? 'google' : 'openai';
+  if (payload.model && modelProviderExpected !== subkey.provider) {
+    return reply.code(400).send(ERR('MODEL_PROVIDER_MISMATCH', `Model ${payload.model} does not match provider ${subkey.provider}`));
+  }
   const allowed = subkey.allowed_models === 'all'
     || (Array.isArray(subkey.allowed_models) && (subkey.allowed_models.includes('all') || subkey.allowed_models.includes(payload.model)));
   if (!allowed) return reply.code(403).send({ error: { message: 'Model not allowed for this subkey.', type: 'permission_error' } });
