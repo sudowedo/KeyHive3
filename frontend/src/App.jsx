@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import useConsoleRouteState from './hooks/useConsoleRouteState';
-import ConsoleShellHeader from './components/parts/ConsoleShellHeader';
 import Sidebar from './components/parts/Sidebar';
 import OverviewPage from './components/pages/OverviewPage';
 import MasterKeysPage from './components/pages/MasterKeysPage';
@@ -131,15 +130,9 @@ export default function App() {
 
   if (view === 'select' || !projectSlug) {
     return <div className='page active'><div style={{ maxWidth: 980, margin: '26px auto' }}>
-      <ConsoleShellHeader
-        isProjectView={false}
-        projectsCount={projects.length}
-        searchValue={projectSearch}
-        onSearchChange={setProjectSearch}
-        onNewProject={() => go('/console/new')}
-      />
       <div className='card' style={{padding:'14px 16px'}}>
         <div className='projects-toolbar'>
+          <input className='projects-search' value={projectSearch} onChange={(e)=>setProjectSearch(e.target.value)} placeholder='Search by name, label, or ID' />
           <button className='btn btn-primary' disabled={projects.length>=3} onClick={()=>go('/console/new')}>+ Create project</button>
         </div>
       </div>
@@ -193,15 +186,13 @@ export default function App() {
     <div className='app'>
       <Sidebar page={page} navigate={navigate} onBackToConsole={() => go('/console')} />
       <main className='main'>
-        <ConsoleShellHeader
-          isProjectView
-          project={selectedProject}
-          projectSlug={projectSlug}
-          page={page}
-          projectsCount={projects.length}
-          onSwitchProject={() => go('/console')}
-          onNewProject={() => go('/console/new')}
-        />
+        <div className='console-header'>
+          <div>
+            <div className='console-title'>{selectedProject?.name || 'Project'} • {String(page || 'overview').replace(/^./, (m)=>m.toUpperCase())}</div>
+            <div className='console-sub'>{selectedProject?.slug || projectSlug} · API Access Manager</div>
+          </div>
+          <button className='btn btn-ghost btn-sm' onClick={() => go('/console')}>Switch project</button>
+        </div>
         <div key={page} className='page-transition'>
           {page === 'overview' && <OverviewPage navigate={navigate} ctx={ctx} />}
           {page === 'masterkeys' && <MasterKeysPage ctx={ctx} />}
