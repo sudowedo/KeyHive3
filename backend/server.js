@@ -199,11 +199,14 @@ fastify.get('/api/subkeys', async (req, reply) => {
   const project = await getProject(req, reply); if (!project) return;
   const { rows } = await query(`SELECT id, name, token_prefix, token_ciphertext_b64, token_iv_b64, token_auth_tag_b64, provider, master_key_id, auto_route_on_exhausted, monthly_token_limit, requests_per_minute_limit, tokens_used, status, spend_limit_usd, max_requests, request_count, allowed_models, EXTRACT(EPOCH FROM expires_at)::bigint AS expires_at, EXTRACT(EPOCH FROM created_at)::bigint AS created_at FROM subkeys WHERE project_id = $1 ORDER BY created_at DESC`, [project.id]);
   return rows.map((row) => {
-    let token = null;
-    if (row.token_ciphertext_b64 && row.token_iv_b64 && row.token_auth_tag_b64) {
-      try { token = decryptSecret({ ciphertext_b64: row.token_ciphertext_b64, iv_b64: row.token_iv_b64, auth_tag_b64: row.token_auth_tag_b64 }, `subkey:${row.id}`); } catch (_) {}
+    let token_preview = `${row.token_prefix || 'sk-kg-'}••••`;
+    if (row.token_prefix && row.token_ciphertext_b64 && row.token_iv_b64 && row.token_auth_tag_b64) {
+      try {
+        const token = decryptSecret({ ciphertext_b64: row.token_ciphertext_b64, iv_b64: row.token_iv_b64, auth_tag_b64: row.token_auth_tag_b64 }, `subkey:${row.id}`);
+        token_preview = `${token.slice(0, 12)}••••••••${token.slice(-4)}`;
+      } catch (_) {}
     }
-    return { ...row, token };
+    return { ...row, token_preview, token: undefined, token_ciphertext_b64: undefined, token_iv_b64: undefined, token_auth_tag_b64: undefined };
   });
 });
 
@@ -308,8 +311,9 @@ fastify.post('/api/quota-requests', async (req, reply) => {
   const project = await getProject(req, reply); if (!project) return;
   const { subkey_id, request_type, amount = null, note = '' } = req.body || {};
   if (!subkey_id || !request_type) return reply.code(400).send({ error: 'subkey_id and request_type required' });
-  await query(`INSERT INTO quota_requests (id,project_id,subkey_id,request_type,amount,note,status) VALUES ($1,$2,$3,$4,$5,$6,$7)`, [randomUUID(), project.id, subkey_id, request_type, amount ? String(amount) : null, note, 'pending']);
-  return { success: true };
+  const id = randomUUID();
+  await query(`INSERT INTO quota_requests (id,project_id,subkey_id,request_type,amount,note,status) VALUES ($1,$2,$3,$4,$5,$6,$7)`, [id, project.id, subkey_id, request_type, amount ? String(amount) : null, note, 'pending']);
+  return { success: true, id };
 });
 
 fastify.post('/v1/chat/completions', async (req, reply) => {
