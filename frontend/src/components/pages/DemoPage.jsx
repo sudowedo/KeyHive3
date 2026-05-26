@@ -8,18 +8,14 @@ const PROVIDER_MODELS = {
 
 export default function DemoPage({ ctx }) {
   const { subkeys, API, notify, sleep, copyText } = ctx;
-  const [token, setToken] = useState('');
+  const [selectedSubkeyId, setSelectedSubkeyId] = useState('');
   const [model, setModel] = useState('gpt-4o-mini');
   const [prompt, setPrompt] = useState('Say hello in exactly 5 words.');
   const [consoleLines, setConsoleLines] = useState(['# KeyGate live proxy demo', '# Select a subkey and hit "Run test call" to see the magic', 'ready — waiting for request']);
 
   const active = subkeys.filter((s) => s.status === 'active');
-  const selectedSubkey = active.find((s) => s.token === token);
-
-  const providerModelList = useMemo(() => {
-    const provider = selectedSubkey?.provider || 'openai';
-    return PROVIDER_MODELS[provider] || PROVIDER_MODELS.openai;
-  }, [selectedSubkey]);
+  const selectedSubkey = active.find((s) => s.id === selectedSubkeyId);
+  const token = selectedSubkey?.token || '';
 
   const allowedModelList = useMemo(() => {
     if (!selectedSubkey) return PROVIDER_MODELS.openai;
@@ -49,7 +45,8 @@ export default function DemoPage({ ctx }) {
   const pySnippet = `import requests\nres = requests.post('http://localhost:3001/v1/chat/completions',\n  headers={'Authorization':'Bearer ${token || 'sk-kg-YourTokenHere'}','Content-Type':'application/json'},\n  json={'model':'${model}','messages':[{'role':'user','content':'${prompt}'}]})\nprint(res.json())`;
 
   const runDemo = async () => {
-    if (!token) return notify('Select a subkey first', 'error');
+    if (!selectedSubkey) return notify('Select a subkey first', 'error');
+    if (!token) return notify('Token is hidden for this subkey. Re-create it to capture token once, then use it here.', 'error');
     if (!prompt.trim()) return notify('Enter a prompt', 'error');
     if (!model) return notify('Select a model', 'error');
     setConsoleLines([`$ sending request with subkey ${token.slice(0, 16)}…`]);
@@ -68,7 +65,7 @@ export default function DemoPage({ ctx }) {
   return <div className='page active demo-page'><div style={{ padding: '32px 36px' }}><div className='page-header'><div className='page-title'>Live demo</div><div className='page-sub'>See exactly how a client uses a subkey — without ever knowing the real key</div></div>
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
       <div className='card'><div className='card-header'><div className='card-title'>Configure test call</div></div>
-        <div className='field'><label>Subkey to test</label><select value={token} onChange={(e) => setToken(e.target.value)}><option value=''>— select a subkey —</option>{active.map((s) => <option key={s.id} value={s.token}>{s.name}</option>)}</select></div>
+        <div className='field'><label>Subkey to test</label><select value={selectedSubkeyId} onChange={(e) => setSelectedSubkeyId(e.target.value)}><option value=''>— select a subkey —</option>{active.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
         <div className='field'><label>Model</label><select value={model} onChange={(e) => setModel(e.target.value)}>{allowedModelList.map((m) => <option key={m} value={m}>{m}</option>)}</select></div>
         <div className='field'><label>Prompt</label><input value={prompt} onChange={(e) => setPrompt(e.target.value)} /></div>
         <button className='btn btn-primary' style={{ width: '100%' }} onClick={runDemo}>Run test call →</button>
