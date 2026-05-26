@@ -210,6 +210,25 @@ fastify.get('/api/subkeys', async (req, reply) => {
   });
 });
 
+fastify.get('/api/subkeys/:id/demo-token', async (req, reply) => {
+  const project = await getProject(req, reply); if (!project) return;
+  const { rows } = await query(
+    `SELECT id, token_ciphertext_b64, token_iv_b64, token_auth_tag_b64
+     FROM subkeys WHERE id = $1 AND project_id = $2 LIMIT 1`,
+    [req.params.id, project.id],
+  );
+  const row = rows[0];
+  if (!row) return reply.code(404).send(ERR('SUBKEY_NOT_FOUND', 'subkey not found'));
+  if (!row.token_ciphertext_b64 || !row.token_iv_b64 || !row.token_auth_tag_b64) {
+    return reply.code(400).send(ERR('TOKEN_NOT_AVAILABLE', 'token not available'));
+  }
+  const token = decryptSecret(
+    { ciphertext_b64: row.token_ciphertext_b64, iv_b64: row.token_iv_b64, auth_tag_b64: row.token_auth_tag_b64 },
+    `subkey:${row.id}`,
+  );
+  return { token };
+});
+
 fastify.patch('/api/subkeys/:id', async (req, reply) => {
   const { id } = req.params;
   const body = req.body || {};

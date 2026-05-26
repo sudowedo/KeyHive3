@@ -7,7 +7,7 @@ const PROVIDER_MODELS = {
 };
 
 export default function DemoPage({ ctx }) {
-  const { subkeys, API, notify, sleep, copyText } = ctx;
+  const { subkeys, API, api, notify, sleep, copyText } = ctx;
   const [selectedSubkeyId, setSelectedSubkeyId] = useState('');
   const [model, setModel] = useState('gpt-4o-mini');
   const [prompt, setPrompt] = useState('Say hello in exactly 5 words.');
@@ -46,14 +46,15 @@ export default function DemoPage({ ctx }) {
 
   const runDemo = async () => {
     if (!selectedSubkey) return notify('Select a subkey first', 'error');
-    if (!token) return notify('Token is hidden for this subkey. Re-create it to capture token once, then use it here.', 'error');
     if (!prompt.trim()) return notify('Enter a prompt', 'error');
     if (!model) return notify('Select a model', 'error');
-    setConsoleLines([`$ sending request with subkey ${token.slice(0, 16)}…`]);
+    const tokenHint = token ? token.slice(0, 16) : (selectedSubkey.token_preview || selectedSubkey.token_prefix || 'sk-kg-');
+    setConsoleLines([`$ sending request with subkey ${tokenHint}…`]);
     await sleep(250); add('→ validating subkey + model allowlist');
     await sleep(250); add(`→ model selected: ${model}`);
     try {
-      const res = await fetch(API + '/v1/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-keygate-client': 'dashboard', Authorization: 'Bearer ' + token }, body: JSON.stringify({ model, messages: [{ role: 'user', content: prompt }], max_tokens: 150 }) });
+      const demoToken = token || (await api(`/api/subkeys/${selectedSubkey.id}/demo-token`)).token;
+      const res = await fetch(API + '/v1/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-keygate-client': 'dashboard', Authorization: 'Bearer ' + demoToken }, body: JSON.stringify({ model, messages: [{ role: 'user', content: prompt }], max_tokens: 150 }) });
       const data = await res.json();
       if (!res.ok) { add(`✗ error ${res.status}: ${data.error?.message || 'unknown error'}`); return; }
       add(`✓ response received`); add(`→ tokens used: ${data.usage?.total_tokens || 0}`); add('AI response:'); add(data.choices?.[0]?.message?.content || ''); notify('Request proxied — check logs for usage');
