@@ -375,7 +375,8 @@ fastify.post('/v1/chat/completions', async (req, reply) => {
 
   const providerKey = decryptSecret(mk, subkey.provider);
   const payload = req.body || {};
-  const allowed = subkey.allowed_models === 'all' || (Array.isArray(subkey.allowed_models) && subkey.allowed_models.includes(payload.model));
+  const allowed = subkey.allowed_models === 'all'
+    || (Array.isArray(subkey.allowed_models) && (subkey.allowed_models.includes('all') || subkey.allowed_models.includes(payload.model)));
   if (!allowed) return reply.code(403).send({ error: { message: 'Model not allowed for this subkey.', type: 'permission_error' } });
 
   let status = 'success'; let tokensUsed = 0; let responseBody; let statusCode = 200;
