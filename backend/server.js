@@ -9,6 +9,7 @@ const { query, initDb, encryptSecret, decryptSecret } = require('./db');
 const DEFAULT_RPM_LIMIT = Number(process.env.RATE_LIMIT_DEFAULT_PER_MIN || 2);
 const redis = createClient({ url: process.env.REDIS_URL });
 const ERR = (code, message) => ({ error: { code, message } });
+const isUuid = (v) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(v || ''));
 
 fastify.register(require('@fastify/cors'), {
   origin: true,
@@ -101,11 +102,13 @@ fastify.get('/api/projects', async () => {
   return rows;
 });
 
-fastify.post('/api/projects', async (req, reply) => {
+fastify.post('/api/projects', {
+  schema: { body: { type: 'object', required: ['name'], properties: { name: { type: 'string', minLength: 1 }, slug: { type: 'string' } } } },
+}, async (req, reply) => {
   const { name, slug = null } = req.body || {};
-  if (!name) return reply.code(400).send({ error: 'name required' });
+  if (!name) return reply.code(400).send(ERR('VALIDATION_ERROR', 'name required'));
   const { rows: countRows } = await query('SELECT COUNT(*)::int AS c FROM projects');
-  if ((countRows[0]?.c || 0) >= 3) return reply.code(400).send({ error: 'max 3 projects allowed for now' });
+  if ((countRows[0]?.c || 0) >= 3) return reply.code(400).send(ERR('PROJECT_LIMIT_REACHED', 'max 3 projects allowed for now'));
   const id = randomUUID();
   const generatedSlug = `project-${Math.random().toString(36).slice(2, 10)}`;
   await query(`INSERT INTO projects (id,name,slug,status) VALUES ($1,$2,$3,$4)`, [id, String(name).trim(), slug ? String(slug).trim() : generatedSlug, 'active']);
@@ -122,12 +125,14 @@ async function deleteProjectByRef(projectRef) {
   return { success: true, deleted: true, id: project.id, slug: project.slug };
 }
 
-fastify.delete('/api/projects/:id', async (req, reply) => {
+fastify.delete('/api/projects/:id', {
+  schema: { params: { type: 'object', required: ['id'], properties: { id: { type: 'string', minLength: 1 } } } },
+}, async (req, reply) => {
   try {
     return await deleteProjectByRef(req.params.id);
   } catch (err) {
     req.log.error(err);
-    return reply.code(500).send({ success: false, deleted: false, reason: 'internal_error' });
+    return reply.code(500).send(ERR('INTERNAL_ERROR', 'failed to delete project'));
   }
 });
 
@@ -157,10 +162,12 @@ fastify.get('/api/master-keys', async (req, reply) => {
   return rows;
 });
 
-fastify.post('/api/master-keys', async (req, reply) => {
+fastify.post('/api/master-keys', {
+  schema: { body: { type: 'object', required: ['provider', 'api_key'], properties: { provider: { type: 'string' }, api_key: { type: 'string', minLength: 1 }, name: { type: 'string' } } } },
+}, async (req, reply) => {
   const project = await getProject(req, reply); if (!project) return;
   const { provider, api_key, name } = req.body || {};
-  if (!provider || !api_key) return reply.code(400).send({ error: 'provider and api_key required' });
+  if (!provider || !api_key) return reply.code(400).send(ERR('VALIDATION_ERROR', 'provider and api_key required'));
   const encrypted = encryptSecret(api_key, provider);
   await query(
     `INSERT INTO master_keys (id, project_id, provider, name, key_masked, ciphertext_b64, iv_b64, auth_tag_b64, key_version)
@@ -212,13 +219,19 @@ fastify.get('/api/subkeys', async (req, reply) => {
 
 fastify.get('/api/subkeys/:id/demo-token', async (req, reply) => {
   const project = await getProject(req, reply); if (!project) return;
+  const ip = req.ip || 'unknown';
+  const demoKey = `rl:demo-token:${project.id}:${ip}`;
+  const demoCount = await redis.incr(demoKey);
+  if (demoCount === 1) await redis.expire(demoKey, 60);
+  if (demoCount > 20) return reply.code(429).send(ERR('RATE_LIMITED', 'too many demo token requests'));
   const { rows } = await query(
-    `SELECT id, token_ciphertext_b64, token_iv_b64, token_auth_tag_b64
+    `SELECT id, status, token_ciphertext_b64, token_iv_b64, token_auth_tag_b64
      FROM subkeys WHERE id = $1 AND project_id = $2 LIMIT 1`,
     [req.params.id, project.id],
   );
   const row = rows[0];
   if (!row) return reply.code(404).send(ERR('SUBKEY_NOT_FOUND', 'subkey not found'));
+  if (row.status !== 'active') return reply.code(403).send(ERR('SUBKEY_INACTIVE', 'subkey is not active'));
   if (!row.token_ciphertext_b64 || !row.token_iv_b64 || !row.token_auth_tag_b64) {
     return reply.code(400).send(ERR('TOKEN_NOT_AVAILABLE', 'token not available'));
   }
@@ -229,14 +242,16 @@ fastify.get('/api/subkeys/:id/demo-token', async (req, reply) => {
   return { token };
 });
 
-fastify.patch('/api/subkeys/:id', async (req, reply) => {
+fastify.patch('/api/subkeys/:id', {
+  schema: { params: { type: 'object', required: ['id'], properties: { id: { type: 'string' } } } },
+}, async (req, reply) => {
   const { id } = req.params;
   const body = req.body || {};
   const updates = [];
   const values = [];
 
   if (body.status !== undefined) {
-    if (!['active', 'paused', 'revoked'].includes(body.status)) return reply.code(400).send({ error: 'status must be active|paused|revoked' });
+    if (!['active', 'paused', 'revoked'].includes(body.status)) return reply.code(400).send(ERR('VALIDATION_ERROR', 'status must be active|paused|revoked'));
     updates.push(`status = $${values.length + 1}`);
     values.push(body.status);
   }
@@ -269,10 +284,12 @@ fastify.patch('/api/subkeys/:id', async (req, reply) => {
   return { success: true };
 });
 
-fastify.post('/api/subkeys', async (req, reply) => {
+fastify.post('/api/subkeys', {
+  schema: { body: { type: 'object', required: ['name', 'provider'], properties: { name: { type: 'string', minLength: 1 }, provider: { type: 'string' }, master_key_id: { type: ['string', 'null'] } } } },
+}, async (req, reply) => {
   const project = await getProject(req, reply); if (!project) return;
   const { name, provider, master_key_id = null, auto_route_on_exhausted = false, monthly_token_limit = 50000, max_requests = 5000, allowed_models = ['all'], spend_limit_usd = null, expires_in_days = null } = req.body || {};
-  if (!name || !provider) return reply.code(400).send({ error: 'name and provider required' });
+  if (!name || !provider) return reply.code(400).send(ERR('VALIDATION_ERROR', 'name and provider required'));
   const id = randomUUID();
   const token = `sk-kg-${randomUUID().replace(/-/g, '')}`;
   const enc = encryptSecret(token, `subkey:${id}`);
@@ -302,15 +319,19 @@ fastify.get('/api/analytics', async (req, reply) => {
   return { totalRequests, totalTokens, avgLatency, topModels, logs, costAttribution };
 });
 
-fastify.get('/api/quota-requests', async () => {
-  const { rows } = await query(`SELECT q.id,q.subkey_id,s.name AS subkey_name,q.request_type,q.amount,q.note,q.status,EXTRACT(EPOCH FROM q.created_at)::bigint AS created_at FROM quota_requests q LEFT JOIN subkeys s ON s.id=q.subkey_id ORDER BY q.created_at DESC`);
+fastify.get('/api/quota-requests', async (req, reply) => {
+  const project = await getProject(req, reply); if (!project) return;
+  const { rows } = await query(`SELECT q.id,q.subkey_id,s.name AS subkey_name,q.request_type,q.amount,q.note,q.status,EXTRACT(EPOCH FROM q.created_at)::bigint AS created_at FROM quota_requests q LEFT JOIN subkeys s ON s.id=q.subkey_id WHERE q.project_id = $1 ORDER BY q.created_at DESC`, [project.id]);
   return rows;
 });
 
 
-fastify.patch('/api/quota-requests/:id', async (req, reply) => {
+fastify.patch('/api/quota-requests/:id', {
+  schema: { params: { type: 'object', required: ['id'], properties: { id: { type: 'string' } } }, body: { type: 'object', required: ['status'], properties: { status: { type: 'string' } } } },
+}, async (req, reply) => {
+  if (!isUuid(req.params.id)) return reply.code(400).send(ERR('INVALID_ID', 'invalid quota request id'));
   const { status } = req.body || {};
-  if (!['approved', 'rejected', 'pending'].includes(status)) return reply.code(400).send({ error: 'status must be approved|rejected|pending' });
+  if (!['approved', 'rejected', 'pending'].includes(status)) return reply.code(400).send(ERR('VALIDATION_ERROR', 'status must be approved|rejected|pending'));
   const { rows } = await query('UPDATE quota_requests SET status = $1 WHERE id = $2 RETURNING *', [status, req.params.id]);
   const r = rows[0];
   if (r && status === 'approved') {
@@ -326,10 +347,12 @@ fastify.patch('/api/quota-requests/:id', async (req, reply) => {
   return { success: true };
 });
 
-fastify.post('/api/quota-requests', async (req, reply) => {
+fastify.post('/api/quota-requests', {
+  schema: { body: { type: 'object', required: ['subkey_id', 'request_type'], properties: { subkey_id: { type: 'string' }, request_type: { type: 'string' }, amount: { type: ['string', 'null'] }, note: { type: 'string' } } } },
+}, async (req, reply) => {
   const project = await getProject(req, reply); if (!project) return;
   const { subkey_id, request_type, amount = null, note = '' } = req.body || {};
-  if (!subkey_id || !request_type) return reply.code(400).send({ error: 'subkey_id and request_type required' });
+  if (!subkey_id || !request_type) return reply.code(400).send(ERR('VALIDATION_ERROR', 'subkey_id and request_type required'));
   const id = randomUUID();
   await query(`INSERT INTO quota_requests (id,project_id,subkey_id,request_type,amount,note,status) VALUES ($1,$2,$3,$4,$5,$6,$7)`, [id, project.id, subkey_id, request_type, amount ? String(amount) : null, note, 'pending']);
   return { success: true, id };

@@ -44,7 +44,11 @@ export default function App() {
     };
     const res = await fetch(API + path, { ...opts, headers, body: hasBody ? JSON.stringify(opts.body) : undefined });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data?.error?.message || data?.error || `HTTP ${res.status}`);
+    if (!res.ok) {
+      const err = new Error(data?.error?.message || data?.error || `HTTP ${res.status}`);
+      err.code = data?.error?.code || null;
+      throw err;
+    }
     return data;
   };
 
