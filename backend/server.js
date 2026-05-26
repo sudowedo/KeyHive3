@@ -1,13 +1,14 @@
 'use strict';
 
 require('dotenv').config();
-const fastify = require('fastify')({ logger: false });
+const fastify = require('fastify')({ logger: { level: 'info' } });
 const { randomUUID, createHash } = require('crypto');
 const { createClient } = require('redis');
 const { query, initDb, encryptSecret, decryptSecret } = require('./db');
 
 const DEFAULT_RPM_LIMIT = Number(process.env.RATE_LIMIT_DEFAULT_PER_MIN || 2);
 const redis = createClient({ url: process.env.REDIS_URL });
+const ERR = (code, message) => ({ error: { code, message } });
 
 fastify.register(require('@fastify/cors'), {
   origin: true,
@@ -31,22 +32,65 @@ async function rateLimitBySubkey(subkeyId, limit = DEFAULT_RPM_LIMIT) {
   return { remaining, reset, limit, allowed: count <= limit };
 }
 
-fastify.get('/health', async () => ({ status: 'ok', ts: Date.now() }));
+fastify.addHook('onRequest', async (req) => {
+  req.reqId = randomUUID();
+});
+
+fastify.setErrorHandler(async (err, req, reply) => {
+  req.log.error({ reqId: req.reqId, err }, 'request failed');
+  try {
+    await query(
+      `INSERT INTO app_error_logs (id,request_id,method,path,message,stack) VALUES ($1,$2,$3,$4,$5,$6)`,
+      [randomUUID(), req.reqId || null, req.method, req.url, String(err.message || err), String(err.stack || '')],
+    );
+  } catch (_) {}
+  return reply.code(err.statusCode || 500).send(ERR('INTERNAL_ERROR', err.message || 'internal error'));
+});
+
+fastify.get('/health', async () => ({ status: 'ok', ts: Date.now(), request_id: randomUUID() }));
+
+fastify.get('/health/db', async (req, reply) => {
+  try {
+    await query('SELECT 1');
+    return { ok: true };
+  } catch (e) {
+    return reply.code(500).send(ERR('DB_UNHEALTHY', e.message || 'db unavailable'));
+  }
+});
+
+fastify.get('/health/redis', async (req, reply) => {
+  try {
+    await redis.ping();
+    return { ok: true };
+  } catch (e) {
+    return reply.code(500).send(ERR('REDIS_UNHEALTHY', e.message || 'redis unavailable'));
+  }
+});
+
+fastify.get('/api/health', async () => {
+  const { rows } = await query(`SELECT day, internal_ok, db_ok, redis_ok, details FROM health_daily ORDER BY day DESC LIMIT 90`);
+  return rows.reverse();
+});
+
+fastify.get('/api/admin/error-logs', async () => {
+  const { rows } = await query(`SELECT id,request_id,method,path,message,EXTRACT(EPOCH FROM created_at)::bigint AS created_at FROM app_error_logs ORDER BY created_at DESC LIMIT 100`);
+  return rows;
+});
 
 async function getProject(req, reply) {
   const projectRef = String(req.headers['x-project-id'] || '').trim();
   if (!projectRef) {
-    reply.code(400).send({ error: 'Missing x-project-id header' });
+    reply.code(400).send(ERR('MISSING_PROJECT_HEADER', 'Missing x-project-id header'));
     return null;
   }
   const { rows } = await query(`SELECT id,name,slug,status FROM projects WHERE id::text = $1 OR slug = $1 LIMIT 1`, [projectRef]);
   const project = rows[0];
   if (!project) {
-    reply.code(404).send({ error: 'project not found' });
+    reply.code(404).send(ERR('PROJECT_NOT_FOUND', 'project not found'));
     return null;
   }
   if (project.status !== 'active') {
-    reply.code(403).send({ error: 'project is not active' });
+    reply.code(403).send(ERR('PROJECT_INACTIVE', 'project is not active'));
     return null;
   }
   return project;
@@ -340,6 +384,44 @@ fastify.post('/v1/chat/completions', async (req, reply) => {
 async function start() {
   await redis.connect();
   await initDb();
+  await query(`CREATE TABLE IF NOT EXISTS health_daily (
+    day DATE PRIMARY KEY,
+    internal_ok BOOLEAN NOT NULL DEFAULT false,
+    db_ok BOOLEAN NOT NULL DEFAULT false,
+    redis_ok BOOLEAN NOT NULL DEFAULT false,
+    details JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`);
+  await query(`CREATE TABLE IF NOT EXISTS app_error_logs (
+    id UUID PRIMARY KEY,
+    request_id TEXT,
+    method TEXT,
+    path TEXT,
+    message TEXT NOT NULL,
+    stack TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`);
+  const { rows: schemaCheck } = await query(`SELECT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name='projects' AND column_name='slug'
+  ) AS ok`);
+  if (!schemaCheck[0]?.ok) throw new Error('Schema drift detected. Re-apply migrations from backend/migrations/*.sql');
+
+  const writeDailyHealth = async () => {
+    let db_ok = false; let redis_ok = false;
+    try { await query('SELECT 1'); db_ok = true; } catch (_) {}
+    try { await redis.ping(); redis_ok = true; } catch (_) {}
+    const internal_ok = db_ok && redis_ok;
+    await query(
+      `INSERT INTO health_daily (day, internal_ok, db_ok, redis_ok, details, updated_at)
+       VALUES (CURRENT_DATE, $1, $2, $3, $4::jsonb, NOW())
+       ON CONFLICT (day) DO UPDATE SET internal_ok=EXCLUDED.internal_ok, db_ok=EXCLUDED.db_ok, redis_ok=EXCLUDED.redis_ok, details=EXCLUDED.details, updated_at=NOW()`,
+      [internal_ok, db_ok, redis_ok, JSON.stringify({ checked_at: Date.now() })],
+    );
+  };
+  await writeDailyHealth();
+  setInterval(writeDailyHealth, 24 * 60 * 60 * 1000);
   const port = 3001;
   await fastify.listen({ port, host: '0.0.0.0' });
   console.log(`🚀 Server running on http://localhost:${port}`);

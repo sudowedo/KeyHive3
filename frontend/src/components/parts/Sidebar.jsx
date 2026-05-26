@@ -6,6 +6,7 @@ const items = [
   ['subkeys', 'Subkeys', '🧩'],
   ['logs', 'Request logs', '📄'],
   ['demo', 'Live demo', '📊'],
+  ['health', 'Health', '🩺'],
   ['notifications', 'Notifications', '🔔'],
 ];
 

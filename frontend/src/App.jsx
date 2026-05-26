@@ -6,6 +6,7 @@ import MasterKeysPage from './components/pages/MasterKeysPage';
 import SubkeysPage from './components/pages/SubkeysPage';
 import LogsPage from './components/pages/LogsPage';
 import DemoPage from './components/pages/DemoPage';
+import HealthPage from './components/pages/HealthPage';
 import NotificationsPage from './components/pages/NotificationsPage';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3001';
@@ -199,6 +200,7 @@ export default function App() {
           {page === 'subkeys' && <SubkeysPage ctx={ctx} />}
           {page === 'logs' && <LogsPage ctx={ctx} />}
           {page === 'demo' && <DemoPage ctx={ctx} />}
+          {page === 'health' && <HealthPage ctx={ctx} />}
           {page === 'notifications' && <NotificationsPage ctx={ctx} />}
         </div>
       </main>
