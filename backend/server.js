@@ -78,6 +78,24 @@ fastify.get('/api/health', async () => {
   return rows.reverse();
 });
 
+fastify.post('/api/health/refresh-now', async (req, reply) => {
+  try {
+    let db_ok = false; let redis_ok = false;
+    try { await query('SELECT 1'); db_ok = true; } catch (_) {}
+    try { await redis.ping(); redis_ok = true; } catch (_) {}
+    const internal_ok = db_ok && redis_ok;
+    await query(
+      `INSERT INTO health_daily (day, internal_ok, db_ok, redis_ok, details, updated_at)
+       VALUES (CURRENT_DATE, $1, $2, $3, $4::jsonb, NOW())
+       ON CONFLICT (day) DO UPDATE SET internal_ok=EXCLUDED.internal_ok, db_ok=EXCLUDED.db_ok, redis_ok=EXCLUDED.redis_ok, details=EXCLUDED.details, updated_at=NOW()`,
+      [internal_ok, db_ok, redis_ok, JSON.stringify({ refreshed_manually: true, checked_at: Date.now() })],
+    );
+    return { success: true, internal_ok, db_ok, redis_ok };
+  } catch (e) {
+    return reply.code(500).send(ERR('HEALTH_REFRESH_FAILED', e.message || 'health refresh failed'));
+  }
+});
+
 fastify.get('/api/admin/error-logs', async (req) => {
   const limitRaw = Number(req.query?.limit || 100);
   const limit = Math.max(1, Math.min(500, Number.isFinite(limitRaw) ? Math.round(limitRaw) : 100));
