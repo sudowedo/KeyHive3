@@ -15,7 +15,7 @@ export default function DemoPage({ ctx }) {
 
   const active = subkeys.filter((s) => s.status === 'active');
   const selectedSubkey = active.find((s) => s.id === selectedSubkeyId);
-  const token = selectedSubkey?.token || '';
+  const tokenPreview = selectedSubkey?.token_preview || '';
 
   const allowedModelList = useMemo(() => {
     if (!selectedSubkey) return PROVIDER_MODELS.openai;
@@ -37,23 +37,23 @@ export default function DemoPage({ ctx }) {
     if (!allowedModelList.includes(model)) setModel(allowedModelList[0] || 'gpt-4o-mini');
   }, [allowedModelList, model]);
 
-  const preview = !token ? 'Select a subkey to see the request preview...' : `POST /v1/chat/completions\nAuthorization: Bearer ${token.slice(0, 12)}••••••\n\n{\n  "model": "${model}",\n  "messages": [{\n    "role": "user",\n    "content": "${prompt}"\n  }]\n}`;
+  const preview = !selectedSubkey ? 'Select a subkey to see the request preview...' : `POST /v1/chat/completions\nAuthorization: Bearer ${tokenPreview || 'sk-kg-••••'}\n\n{\n  "model": "${model}",\n  "messages": [{\n    "role": "user",\n    "content": "${prompt}"\n  }]\n}`;
   const add = (line) => setConsoleLines((v) => [...v, line]);
 
-  const curlSnippet = `TOKEN="${token || 'sk-kg-YourTokenHere'}"\ncurl http://localhost:3001/v1/chat/completions \\\n  -H "Authorization: Bearer $TOKEN" \\\n  -H "Content-Type: application/json" \\\n  -d '{"model":"${model}","messages":[{"role":"user","content":"${prompt}"}]}'`;
-  const jsSnippet = `fetch('http://localhost:3001/v1/chat/completions', {\n  method: 'POST',\n  headers: { Authorization: 'Bearer ${token || 'sk-kg-YourTokenHere'}', 'Content-Type': 'application/json' },\n  body: JSON.stringify({ model: '${model}', messages: [{ role: 'user', content: '${prompt}' }] })\n}).then(r => r.json()).then(console.log);`;
-  const pySnippet = `import requests\nres = requests.post('http://localhost:3001/v1/chat/completions',\n  headers={'Authorization':'Bearer ${token || 'sk-kg-YourTokenHere'}','Content-Type':'application/json'},\n  json={'model':'${model}','messages':[{'role':'user','content':'${prompt}'}]})\nprint(res.json())`;
+  const curlSnippet = `TOKEN="sk-kg-YourTokenHere"\ncurl http://localhost:3001/v1/chat/completions \\\n  -H "Authorization: Bearer $TOKEN" \\\n  -H "Content-Type: application/json" \\\n  -d '{"model":"${model}","messages":[{"role":"user","content":"${prompt}"}]}'`;
+  const jsSnippet = `fetch('http://localhost:3001/v1/chat/completions', {\n  method: 'POST',\n  headers: { Authorization: 'Bearer sk-kg-YourTokenHere', 'Content-Type': 'application/json' },\n  body: JSON.stringify({ model: '${model}', messages: [{ role: 'user', content: '${prompt}' }] })\n}).then(r => r.json()).then(console.log);`;
+  const pySnippet = `import requests\nres = requests.post('http://localhost:3001/v1/chat/completions',\n  headers={'Authorization':'Bearer sk-kg-YourTokenHere','Content-Type':'application/json'},\n  json={'model':'${model}','messages':[{'role':'user','content':'${prompt}'}]})\nprint(res.json())`;
 
   const runDemo = async () => {
     if (!selectedSubkey) return notify('Select a subkey first', 'error');
     if (!prompt.trim()) return notify('Enter a prompt', 'error');
     if (!model) return notify('Select a model', 'error');
-    const tokenHint = token ? token.slice(0, 16) : (selectedSubkey.token_preview || selectedSubkey.token_prefix || 'sk-kg-');
+    const tokenHint = selectedSubkey.token_preview || selectedSubkey.token_prefix || 'sk-kg-';
     setConsoleLines([`$ sending request with subkey ${tokenHint}…`]);
     await sleep(250); add('→ validating subkey + model allowlist');
     await sleep(250); add(`→ model selected: ${model}`);
     try {
-      const demoToken = token || (await api(`/api/subkeys/${selectedSubkey.id}/demo-token`)).token;
+      const demoToken = (await api(`/api/subkeys/${selectedSubkey.id}/demo-token`)).token;
       const res = await fetch(API + '/v1/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-keygate-client': 'dashboard', Authorization: 'Bearer ' + demoToken }, body: JSON.stringify({ model, messages: [{ role: 'user', content: prompt }], max_tokens: 150 }) });
       const data = await res.json();
       if (!res.ok) { add(`✗ error ${res.status}: ${data.error?.message || 'unknown error'}`); return; }

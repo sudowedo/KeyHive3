@@ -17,7 +17,7 @@ const quotaColor = (used, limit) => (((used / limit) * 100 > 90) ? 'over' : ((us
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 export default function App() {
-  const { page, view, projectSlug, go } = useConsoleRouteState();
+  const { page, view, projectSlug, go, isPublicHealth } = useConsoleRouteState();
   const [projects, setProjects] = useState([]);
   const [projectName, setProjectName] = useState('');
   const [projectSearch, setProjectSearch] = useState('');
@@ -63,6 +63,7 @@ export default function App() {
   const loadLogs = async () => { const an = await api('/api/analytics'); setLogs(an.logs || []); setAnalytics(an); };
 
   useEffect(() => {
+    if (isPublicHealth) return;
     loadProjects().then((ps) => {
       const list = ps || [];
       if (!list.length) {
@@ -76,7 +77,7 @@ export default function App() {
         go('/console');
       }
     }).catch((e) => notify(e.message, 'error'));
-  }, [projectSlug, view]);
+  }, [projectSlug, view, isPublicHealth]);
 
   useEffect(() => {
     if (!projectSlug || view !== 'console') return;
@@ -133,6 +134,11 @@ export default function App() {
       notify(e.message || 'Failed to delete project', 'error');
     }
   };
+
+  if (isPublicHealth) {
+    const publicCtx = { ...ctx, api: (path, opts = {}) => api(path, { ...opts, headers: {} }) };
+    return <HealthPage ctx={publicCtx} publicMode />;
+  }
 
   if (view === 'create') {
     return <div className='page active'><div style={{ maxWidth: 620, margin: '60px auto' }}><div className='card'><div className='card-title' style={{ marginBottom: 10 }}>Create Project</div><div className='field'><label>Project Name</label><input value={projectName} onChange={(e)=>setProjectName(e.target.value)} placeholder='Acme Production' /></div><div style={{fontSize:12,color:'var(--muted)',marginTop:8}}>Project ID is auto-generated (example: project-m2zpicks).</div><div className='modal-footer'><button className='btn btn-primary' onClick={createProject}>Create Project</button></div></div></div><div className={`notif ${notif.show ? 'show' : ''} ${notif.type}`}>{notif.msg}</div></div>;

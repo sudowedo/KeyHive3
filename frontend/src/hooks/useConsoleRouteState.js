@@ -4,8 +4,17 @@ export default function useConsoleRouteState() {
   const [page, setPage] = useState('overview');
   const [view, setView] = useState('select');
   const [projectSlug, setProjectSlug] = useState('');
+  const [isPublicHealth, setIsPublicHealth] = useState(false);
 
   const parsePath = () => {
+    if (window.location.pathname === '/health') {
+      setIsPublicHealth(true);
+      setView('select');
+      setProjectSlug('');
+      setPage('health');
+      return;
+    }
+    setIsPublicHealth(false);
     const parts = window.location.pathname.split('/').filter(Boolean);
     if (parts[0] !== 'console') {
       window.history.pushState({}, '', '/console');
@@ -27,5 +36,5 @@ export default function useConsoleRouteState() {
     return () => window.removeEventListener('popstate', h);
   }, []);
 
-  return { page, view, projectSlug, go };
+  return { page, view, projectSlug, go, isPublicHealth };
 }

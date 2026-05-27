@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-export default function HealthPage({ ctx }) {
+export default function HealthPage({ ctx, publicMode = false }) {
   const { api, notify } = ctx;
   const [rows, setRows] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -48,7 +48,7 @@ export default function HealthPage({ ctx }) {
 
   return <div className='page active'><div style={{ padding: '32px 36px' }}>
     <div className='page-header'><div className='page-title'>System Health</div><div className='page-sub'>Public status page for internal server, database, and redis.</div></div>
-    <div className='card' style={{background:summaryBg}}><div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,flexWrap:'wrap'}}><div className='card-title'>Current status: {summary}</div><button className='btn btn-ghost btn-sm' disabled={refreshing} onClick={refreshNow}>{refreshing ? 'Refreshing...' : 'Refresh now'}</button></div></div>
+    <div className='card' style={{background:summaryBg}}><div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,flexWrap:'wrap'}}><div className='card-title'>Current status: {summary}</div>{!publicMode && <button className='btn btn-ghost btn-sm' disabled={refreshing} onClick={refreshNow}>{refreshing ? 'Refreshing...' : 'Refresh now'}</button>}</div></div>
     <div className='card'>
       <div className='card-title' style={{marginBottom:10}}>Uptime over last 90 days ({pct}%)</div>
       <div style={{display:'flex',gap:12,marginBottom:12,fontSize:12,color:'var(--muted)'}}>
