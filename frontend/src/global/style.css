@@ -78,7 +78,7 @@ body{min-height:100vh;display:flex;flex-direction:column}
 .banner-close{position:absolute;top:8px;right:10px;border:none;background:transparent;color:#fff;font-size:13px;cursor:pointer;opacity:.92}
 .banner-close:hover{opacity:1;transform:scale(1.06)}
 .danger-box{background:#ff525226;border:1px solid #ff52526b;color:#fff;border-radius:10px;padding:12px;font-size:13px;line-height:1.5}
-.console-header{position:sticky;top:0;z-index:45;display:flex;justify-content:space-between;align-items:center;gap:10px;min-height:74px;padding:12px 24px;margin:0 0 12px;border-bottom:1px solid #ffffff1f;border-radius:0;background:linear-gradient(145deg,#181b31f0,#101426f2);box-shadow:0 10px 26px #03051052;backdrop-filter:blur(10px)}
+.console-header{position:sticky;top:0;z-index:45;display:flex;justify-content:space-between;align-items:center;gap:10px;min-height:74px;padding:12px 24px;margin:0 0 12px;border-bottom:1px solid #ffffff1c;border-radius:0;background:linear-gradient(180deg,#0f1220,#0d1020 40%,#0b0d19);box-shadow:inset 0 -1px 0 #ffffff0a,0 10px 26px #03051052;backdrop-filter:blur(10px)}
 .console-title{font-family:'Syne',sans-serif;font-size:18px;font-weight:700}
 .console-sub{font-size:12px;color:var(--muted);font-family:'DM Mono',monospace}
 .console-hero{padding:16px 18px;border:1px solid #ffffff1f;border-radius:14px;background:linear-gradient(145deg,#181b31cf,#101426d1);box-shadow:0 10px 26px #03051052;margin-bottom:14px}
