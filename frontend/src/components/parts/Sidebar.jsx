@@ -24,7 +24,7 @@ export default function Sidebar({ page, navigate, onBackToConsole }) {
       <div className='mobile-brand'>KeyGate</div>
       <div className='mobile-appbar-actions'>
         <button className='mobile-icon-btn' onClick={() => go('notifications')} aria-label='Notifications'>🔔</button>
-        <button className='mobile-avatar' aria-label='Profile'>A</button>
+        <button className='mobile-avatar' onClick={onBackToConsole} aria-label='Back to console'>A</button>
       </div>
     </header>
 
