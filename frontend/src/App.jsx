@@ -145,9 +145,9 @@ export default function App() {
   }
 
   if (view === 'select' || !projectSlug) {
-    return <div className='page active'><div style={{ maxWidth: 1200, margin: '14px auto 26px' }}>
+    return <div className='page active console-select-page'>
       <div className='console-select-header'>
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+        <div className='console-select-header-inner'>
           <div>
             <div className='console-title'>Projects Console</div>
             <div className='console-sub'>Create, switch, and manage isolated workspaces</div>
@@ -155,6 +155,7 @@ export default function App() {
           <button className='btn btn-ghost btn-sm'>Free plan</button>
         </div>
       </div>
+      <div className='console-select-content'>
       <div className='card' style={{padding:'14px 16px'}}>
         <div className='projects-toolbar'>
           <input className='projects-search' value={projectSearch} onChange={(e)=>setProjectSearch(e.target.value)} placeholder='Search by name, label, or ID' />
@@ -204,7 +205,8 @@ export default function App() {
         </div>
       </div>
       <div className={`notif ${notif.show ? 'show' : ''} ${notif.type}`}>{notif.msg}</div>
-    </div></div>;
+      </div>
+    </div>;
   }
 
   return <>
