@@ -146,65 +146,63 @@ export default function App() {
 
   if (view === 'select' || !projectSlug) {
     return <div className='page active console-select-page'>
-      <div className='console-select-header'>
-        <div className='console-select-header-inner'>
-          <div>
-            <div className='console-title'>Projects Console</div>
-            <div className='console-sub'>Create, switch, and manage isolated workspaces</div>
-          </div>
-          <button className='btn btn-ghost btn-sm'>Free plan</button>
-        </div>
-      </div>
       <div className='console-select-content'>
-      <div className='card console-toolbar-card' style={{padding:'14px 16px'}}>
-        <div className='projects-toolbar'>
-          <input className='projects-search' value={projectSearch} onChange={(e)=>setProjectSearch(e.target.value)} placeholder='Search by name, label, or ID' />
-          <button className='btn btn-primary' disabled={projects.length>=3} onClick={()=>go('/console/new')}>+ Create project</button>
+        <header className='console-landing-header'>
+          <h1>Projects Console</h1>
+          <p>Create, switch, and manage isolated workspaces</p>
+        </header>
+
+        <div className='console-top-bar'>
+          <div className='console-plan-badge'><span className='console-plan-dot' /> Free plan <span>{projects.length} / 3 projects</span></div>
+          <button className='btn btn-primary console-create-btn' disabled={projects.length>=3} onClick={()=>go('/console/new')}>+ Create project</button>
         </div>
-      </div>
-      <div className={`card projects-banner ${showPlanBanner ? '' : 'hidden'}`}>
-        <button className='banner-close' onClick={() => setShowPlanBanner(false)} aria-label='Close banner'>✕</button>
-        <div>
-          <div className='card-title'>Your Free plan includes up to 3 projects and limited resources.</div>
-          <button className='btn btn-ghost btn-sm' style={{marginTop:8}}>Upgrade to Pro</button>
+
+        <div className='console-search-section'>
+          <input className='projects-search console-search-input' value={projectSearch} onChange={(e)=>setProjectSearch(e.target.value)} placeholder='Search by name, label, or ID' />
         </div>
-      </div>
-      <div className='card projects-summary-card' style={{padding:'14px 16px'}}>
-        <div style={{display:'flex',justifyContent:'space-between',gap:10,alignItems:'center',flexWrap:'wrap'}}>
-          <div><div className='card-title'>Projects Console</div><div className='card-sub'>Choose your workspace to continue</div></div>
-          <div style={{fontSize:12,color:'var(--muted)'}}>Total: {projects.length} / 3 projects</div>
+
+        <div className={`card projects-banner console-info-banner ${showPlanBanner ? '' : 'hidden'}`}>
+          <div className='console-banner-text'>Your Free plan includes up to 3 projects and limited resources.</div>
+          <button className='btn btn-ghost btn-sm console-banner-link' style={{marginTop:8}}>Upgrade to Pro</button>
+          <button className='banner-close' onClick={() => setShowPlanBanner(false)} aria-label='Close banner'>✕</button>
         </div>
-      </div>
-      <div className='projects-grid'>
-        {filteredProjects.map((p)=><button key={p.id} className='card project-card' onClick={()=>go(`/console/${p.slug}/overview`)} style={{textAlign:'left'}}>
-          <div style={{display:'flex',justifyContent:'space-between',gap:8,alignItems:'center'}}>
-            <div style={{fontWeight:700,fontSize:20,color:'var(--text)'}}>{p.name}</div>
-            <span className={`badge ${p.status==='active'?'active':'paused'}`}>{p.status}</span>
-          </div>
-          <div style={{marginTop:8,color:'var(--muted)',fontSize:12}}>{p.slug}</div>
-          <div style={{marginTop:18,fontSize:12,color:'var(--dim)',display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}>
-            <span>Created {fmtDate(p.created_at)}</span>
-            <span className='project-delete' onClick={(e)=>{e.stopPropagation(); setProjectToDelete(p); setDeleteConfirm('');}}>🗑️</span>
-          </div>
-        </button>)}
-      </div>
-      <div className={`modal-backdrop ${projectToDelete ? 'open' : ''}`} onClick={(e) => e.target === e.currentTarget && setProjectToDelete(null)}>
-        <div className='modal'>
-          <div className='modal-title'>Delete project</div>
-          <div className='danger-box'>
-            This action is irreversible all the things related to this projects will be deleted and issued keys will stop working.
-          </div>
-          <div className='field' style={{marginTop:12}}>
-            <label>Type "{expectedDeleteText}" to continue</label>
-            <input value={deleteConfirm} onChange={(e)=>setDeleteConfirm(e.target.value)} placeholder='delete project-xxxx' />
-          </div>
-          <div className='modal-footer'>
-            <button className='btn btn-ghost' onClick={()=>setProjectToDelete(null)}>Cancel</button>
-            <button className='btn btn-danger' disabled={!canDeleteProject} onClick={deleteProject}>Delete project permanently</button>
+
+        <div className='console-project-count'>Total: <strong>{projects.length} / 3</strong> projects</div>
+
+        <div className='projects-grid console-projects-grid'>
+          {filteredProjects.map((p)=><button key={p.id} className='card project-card console-project-card' onClick={()=>go(`/console/${p.slug}/overview`)}>
+            <div className='console-project-card-header'>
+              <h3>{p.name}</h3>
+              <span className={`badge ${p.status==='active'?'active':'paused'}`}>{p.status}</span>
+            </div>
+            <div className='console-project-card-body'>
+              <div className='console-project-id'>{p.slug}</div>
+              <div className='console-project-date'>Created {fmtDate(p.created_at)}</div>
+            </div>
+            <div className='console-project-card-footer'>
+              <span />
+              <span className='project-delete console-project-delete' onClick={(e)=>{e.stopPropagation(); setProjectToDelete(p); setDeleteConfirm('');}}>🗑️</span>
+            </div>
+          </button>)}
+        </div>
+
+        <div className={`modal-backdrop ${projectToDelete ? 'open' : ''}`} onClick={(e) => e.target === e.currentTarget && setProjectToDelete(null)}>
+          <div className='modal'>
+            <div className='modal-title'>Delete project</div>
+            <div className='danger-box'>
+              This action is irreversible all the things related to this projects will be deleted and issued keys will stop working.
+            </div>
+            <div className='field' style={{marginTop:12}}>
+              <label>Type "{expectedDeleteText}" to continue</label>
+              <input value={deleteConfirm} onChange={(e)=>setDeleteConfirm(e.target.value)} placeholder='delete project-xxxx' />
+            </div>
+            <div className='modal-footer'>
+              <button className='btn btn-ghost' onClick={()=>setProjectToDelete(null)}>Cancel</button>
+              <button className='btn btn-danger' disabled={!canDeleteProject} onClick={deleteProject}>Delete project permanently</button>
+            </div>
           </div>
         </div>
-      </div>
-      <div className={`notif ${notif.show ? 'show' : ''} ${notif.type}`}>{notif.msg}</div>
+        <div className={`notif ${notif.show ? 'show' : ''} ${notif.type}`}>{notif.msg}</div>
       </div>
     </div>;
   }
