@@ -323,3 +323,113 @@ tr:hover td{background:#ffffff06}
   .console-select-content{padding:0 10px 88px}
   .projects-grid{grid-template-columns:1fr}
 }
+
+/* ── /console mobile refresh ── */
+@media (max-width: 760px){
+  .console-select-page{
+    min-height:100dvh;
+    padding:0;
+    background:
+      radial-gradient(420px 260px at 20% -8%,#7c6bff35,transparent 62%),
+      radial-gradient(360px 220px at 100% 4%,#4a9eff24,transparent 58%),
+      linear-gradient(180deg,#080b17 0%,#05070f 100%);
+  }
+  .console-select-header{
+    position:sticky;
+    top:0;
+    z-index:80;
+    margin:0;
+    padding:16px 14px 18px;
+    border-bottom:1px solid #ffffff24;
+    background:
+      linear-gradient(180deg,#101526f5,#0b1020f2 62%,#080b17ef),
+      radial-gradient(260px 130px at 20% 0%,#7c6bff30,transparent 70%);
+    box-shadow:0 14px 32px #03040d8a,inset 0 1px 0 #ffffff16;
+    backdrop-filter:blur(16px) saturate(1.2);
+    -webkit-backdrop-filter:blur(16px) saturate(1.2);
+  }
+  .console-select-header-inner{
+    align-items:flex-start;
+    gap:12px;
+  }
+  .console-select-header .console-title{
+    font-size:23px;
+    line-height:1.05;
+    letter-spacing:-.04em;
+  }
+  .console-select-header .console-sub{
+    margin-top:6px;
+    font-size:11px;
+    line-height:1.45;
+    color:#aeb5d6;
+    white-space:normal;
+  }
+  .console-select-header .btn{
+    min-height:34px;
+    padding:7px 11px;
+    border-radius:999px;
+    background:#2dca7217;
+    border-color:#2dca7245;
+    color:#9ff2bf;
+  }
+  .console-select-content{
+    display:grid;
+    gap:10px;
+    width:100%;
+    padding:12px 10px 92px;
+    margin:0;
+  }
+  .console-select-page .card{
+    margin-bottom:0;
+    border-radius:18px;
+    padding:16px 14px !important;
+    background:linear-gradient(160deg,#151827e8,#0f1322e6);
+    border-color:#ffffff20;
+    box-shadow:0 12px 28px #03040d5f,inset 0 1px 0 #ffffff13;
+  }
+  .console-select-page .projects-toolbar{
+    gap:10px;
+  }
+  .console-select-page .projects-search{
+    min-height:46px;
+    border-radius:14px;
+    background:#090d19cc;
+    border-color:#ffffff22;
+    font-size:13px;
+  }
+  .console-select-page .projects-toolbar .btn{
+    min-height:46px;
+    border-radius:14px;
+  }
+  .console-select-page .projects-banner{
+    background:linear-gradient(145deg,#7c6bff1a,#101426e8);
+    border-color:#8b7dff40;
+  }
+  .console-select-page .projects-grid{
+    gap:10px;
+  }
+  .console-select-page .project-card{
+    min-height:142px;
+    border-radius:20px;
+    background:
+      linear-gradient(150deg,#181c31f0,#111525eb 64%,#0c101ded),
+      radial-gradient(260px 130px at 100% 0%,#7c6bff2b,transparent 62%);
+    border-color:#ffffff24;
+    transform:none;
+  }
+  .console-select-page .project-card:hover,
+  .console-select-page .project-card:active{
+    transform:translateY(-1px);
+    border-color:#8f84ff80;
+  }
+  .console-select-page .project-delete{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    width:36px;
+    height:36px;
+    border-radius:12px;
+    background:#ffffff10;
+    border:1px solid #ffffff18;
+  }
+}
