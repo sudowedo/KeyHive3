@@ -433,3 +433,116 @@ tr:hover td{background:#ffffff06}
     border:1px solid #ffffff18;
   }
 }
+
+/* ── /console mobile v2 cleanup ── */
+@media (max-width: 760px){
+  .console-select-page{
+    background:linear-gradient(180deg,#080b16 0%,#050711 100%);
+  }
+  .console-select-header{
+    padding:14px 12px 12px;
+    margin:0 0 8px;
+    box-shadow:0 8px 20px #03040d80;
+  }
+  .console-select-header-inner{
+    display:grid;
+    grid-template-columns:1fr auto;
+    align-items:center;
+    gap:10px;
+  }
+  .console-select-header .console-title{
+    font-size:19px;
+    line-height:1.1;
+  }
+  .console-select-header .console-sub{
+    font-size:10px;
+    margin-top:3px;
+    max-width:230px;
+  }
+  .console-select-header .btn{
+    min-height:30px;
+    padding:5px 9px;
+    font-size:10px;
+  }
+  .console-select-content{
+    gap:8px;
+    padding:8px 8px 92px;
+  }
+  .console-select-page .card{
+    border-radius:14px;
+    padding:12px !important;
+  }
+  .console-toolbar-card{
+    background:transparent !important;
+    border:0 !important;
+    box-shadow:none !important;
+    padding:0 !important;
+  }
+  .console-toolbar-card::before{display:none}
+  .console-select-page .projects-toolbar{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:8px;
+  }
+  .console-select-page .projects-search{
+    min-height:42px;
+    border-radius:12px;
+    padding:9px 12px;
+  }
+  .console-select-page .projects-toolbar .btn{
+    min-height:42px;
+    border-radius:12px;
+    justify-content:center;
+  }
+  .console-select-page .projects-banner{
+    padding:12px 34px 12px 12px !important;
+  }
+  .console-select-page .projects-banner .card-title{
+    font-size:12px;
+    line-height:1.45;
+  }
+  .console-select-page .projects-banner .btn{
+    min-height:30px;
+    padding:5px 9px;
+    font-size:11px;
+    margin-top:7px !important;
+  }
+  .console-select-page .banner-close{
+    top:8px;
+    right:10px;
+  }
+  .projects-summary-card{
+    display:none;
+  }
+  .console-select-page .projects-grid{
+    gap:8px;
+  }
+  .console-select-page .project-card{
+    min-height:112px;
+    padding:14px !important;
+    border-radius:16px;
+  }
+  .console-select-page .project-card > div:first-child{
+    align-items:flex-start !important;
+  }
+  .console-select-page .project-card div[style*='font-size:20px']{
+    font-size:17px !important;
+    line-height:1.15;
+  }
+  .console-select-page .project-card .badge{
+    padding:3px 8px;
+    font-size:10px;
+  }
+  .console-select-page .project-card div[style*='margin-top:8']{
+    margin-top:5px !important;
+    font-size:11px !important;
+  }
+  .console-select-page .project-card div[style*='margin-top:18']{
+    margin-top:14px !important;
+  }
+  .console-select-page .project-delete{
+    width:32px;
+    height:32px;
+    border-radius:10px;
+  }
+}

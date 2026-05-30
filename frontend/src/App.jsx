@@ -156,7 +156,7 @@ export default function App() {
         </div>
       </div>
       <div className='console-select-content'>
-      <div className='card' style={{padding:'14px 16px'}}>
+      <div className='card console-toolbar-card' style={{padding:'14px 16px'}}>
         <div className='projects-toolbar'>
           <input className='projects-search' value={projectSearch} onChange={(e)=>setProjectSearch(e.target.value)} placeholder='Search by name, label, or ID' />
           <button className='btn btn-primary' disabled={projects.length>=3} onClick={()=>go('/console/new')}>+ Create project</button>
@@ -169,7 +169,7 @@ export default function App() {
           <button className='btn btn-ghost btn-sm' style={{marginTop:8}}>Upgrade to Pro</button>
         </div>
       </div>
-      <div className='card' style={{padding:'14px 16px'}}>
+      <div className='card projects-summary-card' style={{padding:'14px 16px'}}>
         <div style={{display:'flex',justifyContent:'space-between',gap:10,alignItems:'center',flexWrap:'wrap'}}>
           <div><div className='card-title'>Projects Console</div><div className='card-sub'>Choose your workspace to continue</div></div>
           <div style={{fontSize:12,color:'var(--muted)'}}>Total: {projects.length} / 3 projects</div>
