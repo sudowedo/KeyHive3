@@ -154,7 +154,7 @@ export default function App() {
 
         <div className='console-top-bar'>
           <div className='console-plan-badge'><span className='console-plan-dot' /> Free plan <span>{projects.length} / 3 projects</span></div>
-          <button className='btn btn-primary console-create-btn' disabled={projects.length>=3} onClick={()=>go('/console/new')}>+ Create project</button>
+          <button className='btn btn-primary console-create-btn' disabled={projects.length>=3} onClick={()=>go('/console/new')}>+ New project</button>
         </div>
 
         <div className='console-search-section'>
@@ -181,7 +181,7 @@ export default function App() {
             </div>
             <div className='console-project-card-footer'>
               <span />
-              <span className='project-delete console-project-delete' onClick={(e)=>{e.stopPropagation(); setProjectToDelete(p); setDeleteConfirm('');}}>🗑️</span>
+              <span className='project-delete console-project-delete' onClick={(e)=>{e.stopPropagation(); setProjectToDelete(p); setDeleteConfirm('');}}>Delete</span>
             </div>
           </button>)}
         </div>
