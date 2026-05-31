@@ -148,14 +148,15 @@ export default function App() {
     return <div className='page active console-select-page'>
       <div className='console-select-content'>
         <header className='console-landing-header'>
-          <h1>Projects Console</h1>
-          <p>Create, switch, and manage isolated workspaces</p>
+          <div>
+            <h1>Projects Console</h1>
+            <p>Create, switch, and manage isolated workspaces</p>
+          </div>
+          <div className='console-top-bar'>
+            <div className='console-plan-badge'><span className='console-plan-dot' /> Free plan <span>{projects.length} / 3 projects</span></div>
+            <button className='btn btn-primary console-create-btn' disabled={projects.length>=3} onClick={()=>go('/console/new')}>+ New project</button>
+          </div>
         </header>
-
-        <div className='console-top-bar'>
-          <div className='console-plan-badge'><span className='console-plan-dot' /> Free plan <span>{projects.length} / 3 projects</span></div>
-          <button className='btn btn-primary console-create-btn' disabled={projects.length>=3} onClick={()=>go('/console/new')}>+ New project</button>
-        </div>
 
         <div className='console-search-section'>
           <input className='projects-search console-search-input' value={projectSearch} onChange={(e)=>setProjectSearch(e.target.value)} placeholder='Search by name, label, or ID' />
