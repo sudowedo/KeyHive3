@@ -1288,3 +1288,99 @@ td{
     font-size:7px;
   }
 }
+
+/* ── Creative sticky header refresh ── */
+.console-header,
+.console-landing-header{
+  position:sticky;
+  top:0;
+  z-index:120;
+  isolation:isolate;
+  overflow:hidden;
+  background:
+    radial-gradient(520px 180px at 8% -60%,#7c6bff3b,transparent 65%),
+    radial-gradient(420px 160px at 92% -50%,#4a9eff24,transparent 62%),
+    linear-gradient(180deg,#0e1324f7 0%,#0a0e1cf3 76%,#080b1700 100%);
+  border-bottom:1px solid #ffffff18;
+  box-shadow:0 16px 34px #02040b54,inset 0 1px 0 #ffffff12;
+  backdrop-filter:blur(18px) saturate(1.18);
+  -webkit-backdrop-filter:blur(18px) saturate(1.18);
+}
+.console-header::before,
+.console-landing-header::before{
+  content:'';
+  position:absolute;
+  inset:0;
+  z-index:-1;
+  pointer-events:none;
+  background:linear-gradient(90deg,transparent,#ffffff12 46%,transparent 72%);
+  opacity:.55;
+}
+.console-header::after,
+.console-landing-header::after{
+  content:'';
+  position:absolute;
+  left:24px;
+  right:24px;
+  bottom:0;
+  height:1px;
+  pointer-events:none;
+  background:linear-gradient(90deg,transparent,#7c6bff88,#4a9eff55,transparent);
+}
+.console-header{
+  margin:0;
+  border-radius:0;
+}
+.console-landing-header{
+  border-radius:0 0 18px 18px;
+}
+.console-landing-header h1,
+.console-title{
+  text-shadow:0 8px 24px #0008;
+}
+.console-landing-header .console-top-bar{
+  padding:6px;
+  border:1px solid #ffffff14;
+  border-radius:14px;
+  background:#070b15a8;
+  box-shadow:inset 0 1px 0 #ffffff10,0 10px 24px #02040b42;
+}
+.console-plan-badge{
+  background:#0d1423d9;
+  border-color:#ffffff18;
+}
+.console-create-btn{
+  position:relative;
+  overflow:hidden;
+}
+.console-create-btn::after{
+  content:'';
+  position:absolute;
+  inset:0;
+  background:linear-gradient(105deg,transparent 0%,#ffffff28 45%,transparent 70%);
+  transform:translateX(-120%);
+  transition:transform .45s ease;
+}
+.console-create-btn:hover::after{
+  transform:translateX(120%);
+}
+
+@media (max-width:760px){
+  .console-landing-header{
+    border-radius:0 0 14px 14px;
+  }
+  .console-landing-header::after{
+    left:12px;
+    right:12px;
+  }
+  .console-landing-header .console-top-bar{
+    padding:4px;
+    border-radius:10px;
+  }
+  .console-plan-badge{
+    min-height:25px;
+  }
+  .console-create-btn{
+    min-height:27px;
+  }
+}
