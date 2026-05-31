@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import useConsoleRouteState from './hooks/useConsoleRouteState';
 import Sidebar from './components/parts/Sidebar';
+import ConsoleHeader from './components/parts/ConsoleHeader';
 import OverviewPage from './components/pages/OverviewPage';
 import MasterKeysPage from './components/pages/MasterKeysPage';
 import SubkeysPage from './components/pages/SubkeysPage';
@@ -31,6 +32,7 @@ export default function App() {
   const [notif, setNotif] = useState({ show: false, msg: '', type: 'success' });
   const [modal, setModal] = useState('');
   const [revealedToken, setRevealedToken] = useState('—');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const notify = (msg, type = 'success') => { setNotif({ show: true, msg, type }); setTimeout(() => setNotif((v) => ({ ...v, show: false })), 3000); };
   const copyText = (text) => navigator.clipboard.writeText(text).then(() => notify('Copied to clipboard'));
@@ -210,15 +212,22 @@ export default function App() {
 
   return <>
     <div className='app'>
-      <Sidebar page={page} navigate={navigate} onBackToConsole={() => go('/console')} />
+      <ConsoleHeader
+        page={page}
+        selectedProject={selectedProject}
+        projectSlug={projectSlug}
+        onSwitchProject={() => go('/console')}
+        onOpenMobileMenu={() => setMobileMenuOpen(true)}
+        onOpenNotifications={() => navigate('notifications')}
+      />
+      <Sidebar
+        page={page}
+        navigate={navigate}
+        onBackToConsole={() => go('/console')}
+        drawerOpen={mobileMenuOpen}
+        setDrawerOpen={setMobileMenuOpen}
+      />
       <main className='main'>
-        <div className='console-header'>
-          <div>
-            <div className='console-title'>{selectedProject?.name || 'Project'} • {String(page || 'overview').replace(/^./, (m)=>m.toUpperCase())}</div>
-            <div className='console-sub'>{selectedProject?.slug || projectSlug} · API Access Manager</div>
-          </div>
-          <button className='btn btn-ghost btn-sm' onClick={() => go('/console')}>Switch project</button>
-        </div>
         <div key={page} className='page-transition'>
           {page === 'overview' && <OverviewPage navigate={navigate} ctx={ctx} />}
           {page === 'masterkeys' && <MasterKeysPage ctx={ctx} />}
