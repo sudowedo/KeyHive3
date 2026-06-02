@@ -5,12 +5,14 @@
 - Current additive migrations:
   - `002_health_monitoring.sql`
   - `003_request_error_logs.sql`
+  - `004_request_log_details.sql`
 
 ## Apply from scratch
 ```bash
 psql "$DATABASE_URL" -f backend/migrations/001_initial_postgres.sql
 psql "$DATABASE_URL" -f backend/migrations/002_health_monitoring.sql
 psql "$DATABASE_URL" -f backend/migrations/003_request_error_logs.sql
+psql "$DATABASE_URL" -f backend/migrations/004_request_log_details.sql
 ```
 
 ## Rules

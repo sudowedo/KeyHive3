@@ -1,8 +1,8 @@
 'use strict';
 
 require('dotenv').config();
-const fastify = require('fastify')({ logger: { level: 'info' } });
 const { randomUUID, createHash } = require('crypto');
+const fastify = require('fastify')({ logger: { level: 'info' }, genReqId: () => randomUUID() });
 const { createClient } = require('redis');
 const { query, initDb, encryptSecret, decryptSecret } = require('./db');
 
@@ -21,6 +21,54 @@ fastify.register(require('@fastify/helmet'), { contentSecurityPolicy: false });
 function hashToken(token) { return createHash('sha256').update(token).digest('hex'); }
 function maskKey(apiKey) { return apiKey.slice(0, 7) + '••••••••' + apiKey.slice(-4); }
 
+function normalizeUsage(body = {}) {
+  const usage = body.usage || {};
+  const promptTokens = Number(usage.prompt_tokens ?? usage.input_tokens ?? 0) || 0;
+  const completionTokens = Number(usage.completion_tokens ?? usage.output_tokens ?? 0) || 0;
+  const totalTokens = Number(usage.total_tokens ?? (promptTokens + completionTokens)) || 0;
+  return { promptTokens, completionTokens, totalTokens };
+}
+
+function estimateCostUsd(provider, model, promptTokens = 0, completionTokens = 0, totalTokens = 0) {
+  const key = String(model || '').toLowerCase();
+  let inputPerMillion = 0.15;
+  let outputPerMillion = 0.60;
+  if (provider === 'google') {
+    inputPerMillion = key.includes('pro') ? 1.25 : 0.30;
+    outputPerMillion = key.includes('pro') ? 10.00 : 2.50;
+  } else if (key.includes('gpt-4o') && !key.includes('mini')) {
+    inputPerMillion = 2.50;
+    outputPerMillion = 10.00;
+  }
+  const effectivePrompt = promptTokens || totalTokens;
+  return Number((((effectivePrompt / 1_000_000) * inputPerMillion) + ((completionTokens / 1_000_000) * outputPerMillion)).toFixed(6));
+}
+
+async function insertRequestLog({ req, subkey = {}, model = null, tokensUsed = 0, promptTokens = 0, completionTokens = 0, status, errorReason = null, source, latencyMs, estimatedCostUsd = 0 }) {
+  const id = randomUUID();
+  const provider = subkey.provider || null;
+  await query(
+    `INSERT INTO request_logs (id,request_id,project_id,subkey_id,subkey_name,provider,model,tokens_used,prompt_tokens,completion_tokens,estimated_cost_usd,status,error_reason,source,latency_ms)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+    [id, req.id, subkey.project_id, subkey.id || null, subkey.name || null, provider, model, tokensUsed, promptTokens, completionTokens, estimatedCostUsd, status, errorReason, source || req.headers['x-keygate-client'] || 'external', latencyMs],
+  );
+  req.log.info({
+    event: 'gateway_request_log',
+    log_id: id,
+    provider,
+    model,
+    status,
+    error_reason: errorReason,
+    tokens_used: tokensUsed,
+    prompt_tokens: promptTokens,
+    completion_tokens: completionTokens,
+    estimated_cost_usd: estimatedCostUsd,
+    latency_ms: latencyMs,
+    subkey_id: subkey.id || null,
+    project_id: subkey.project_id || null,
+  }, 'gateway request logged');
+}
+
 async function rateLimitBySubkey(subkeyId, limit = DEFAULT_RPM_LIMIT) {
   const nowSec = Math.floor(Date.now() / 1000);
   const windowSec = 60;
@@ -34,20 +82,19 @@ async function rateLimitBySubkey(subkeyId, limit = DEFAULT_RPM_LIMIT) {
 }
 
 fastify.addHook('onRequest', async (req) => {
-  req.reqId = randomUUID();
   req._startedAt = Date.now();
 });
 fastify.addHook('onResponse', async (req, reply) => {
   const ms = Date.now() - (req._startedAt || Date.now());
-  req.log.info({ reqId: req.reqId, method: req.method, path: req.url, status: reply.statusCode, ms }, 'request metrics');
+  req.log.info({ method: req.method, path: req.url, status: reply.statusCode, ms }, 'request metrics');
 });
 
 fastify.setErrorHandler(async (err, req, reply) => {
-  req.log.error({ reqId: req.reqId, err }, 'request failed');
+  req.log.error({ err }, 'request failed');
   try {
     await query(
       `INSERT INTO app_error_logs (id,request_id,method,path,message,stack) VALUES ($1,$2,$3,$4,$5,$6)`,
-      [randomUUID(), req.reqId || null, req.method, req.url, String(err.message || err), String(err.stack || '')],
+      [randomUUID(), req.id || null, req.method, req.url, String(err.message || err), String(err.stack || '')],
     );
   } catch (_) {}
   return reply.code(err.statusCode || 500).send(ERR('INTERNAL_ERROR', err.message || 'internal error'));
@@ -348,18 +395,17 @@ fastify.get('/api/analytics', async (req, reply) => {
   const project = await getProject(req, reply); if (!project) return;
   const [{ rows: totals }, { rows: logs }] = await Promise.all([
     query(`SELECT COUNT(*)::int AS total_requests, COALESCE(SUM(tokens_used),0)::int AS total_tokens FROM request_logs WHERE project_id = $1`, [project.id]),
-    query(`SELECT id,subkey_id,subkey_name,model,tokens_used,status,source,latency_ms,EXTRACT(EPOCH FROM created_at)::bigint AS created_at FROM request_logs WHERE project_id = $1 ORDER BY created_at DESC LIMIT 200`, [project.id]),
+    query(`SELECT id,request_id,subkey_id,subkey_name,provider,model,tokens_used,prompt_tokens,completion_tokens,estimated_cost_usd,status,error_reason,source,latency_ms,EXTRACT(EPOCH FROM created_at)::bigint AS created_at FROM request_logs WHERE project_id = $1 ORDER BY created_at DESC LIMIT 200`, [project.id]),
   ]);
   const totalRequests = totals[0]?.total_requests || 0;
   const totalTokens = totals[0]?.total_tokens || 0;
   const avgLatency = logs.length ? Math.round(logs.reduce((s, r) => s + Number(r.latency_ms || 0), 0) / logs.length) : 0;
   const topModels = [...logs.reduce((m, r) => (m.set(r.model || 'unknown', (m.get(r.model || 'unknown') || 0) + 1), m), new Map()).entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([model, count]) => ({ model, count }));
-  const costAttribution = logs.map((l) => {
-    const t = Number(l.tokens_used || 0);
-    const isGemini = String(l.model || '').startsWith('gemini');
-    const est_cost_usd = isGemini ? (t / 1_000_000) * 0.15 : (t / 1_000_000) * 2.0;
-    return { model: l.model || 'unknown', est_cost_usd };
-  });
+  const costAttribution = logs.map((l) => ({
+    provider: l.provider || 'unknown',
+    model: l.model || 'unknown',
+    est_cost_usd: Number(l.estimated_cost_usd || 0),
+  }));
   return { totalRequests, totalTokens, avgLatency, topModels, logs, costAttribution };
 });
 
@@ -407,53 +453,56 @@ fastify.post('/api/quota-requests', {
 
 fastify.post('/v1/chat/completions', async (req, reply) => {
   const started = Date.now();
+  const payload = req.body || {};
+  const source = req.headers['x-keygate-client'] || 'external';
   const bearer = (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
-  if (!bearer) return reply.code(401).send({ error: { message: 'Missing Authorization header.', type: 'auth_error' } });
+  const finishMs = () => Date.now() - started;
+  if (!bearer) {
+    req.log.warn({ event: 'gateway_request_rejected', error_reason: 'missing_authorization', provider: null, model: payload.model || null }, 'gateway request rejected');
+    return reply.code(401).send(ERR('MISSING_AUTHORIZATION', 'Missing Authorization header.'));
+  }
 
   const { rows } = await query(`SELECT id,project_id,name,provider,master_key_id,auto_route_on_exhausted,status,requests_per_minute_limit,max_requests,request_count,monthly_token_limit,tokens_used,expires_at,allowed_models FROM subkeys WHERE token_hash = $1`, [hashToken(bearer)]);
   const subkey = rows[0];
-  if (!subkey) return reply.code(401).send({ error: { message: 'Invalid subkey.', type: 'auth_error' } });
-  if (subkey.status !== 'active') return reply.code(403).send({ error: { message: `Subkey is ${subkey.status}.`, type: 'permission_error' } });
-  if (subkey.expires_at && new Date(subkey.expires_at).getTime() < Date.now()) return reply.code(403).send({ error: { message: 'Subkey expired.', type: 'permission_error' } });
-  if (Number(subkey.request_count || 0) >= Number(subkey.max_requests || 5000)) {
-    await query(`INSERT INTO request_logs (id,project_id,subkey_id,subkey_name,model,tokens_used,status,source,latency_ms) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`, [randomUUID(), subkey.project_id, subkey.id, subkey.name, (req.body||{}).model || null, 0, 'max_requests_reached', req.headers['x-keygate-client'] || 'external', Date.now() - started]);
-    return reply.code(403).send({ error: { message: 'Max requests reached.', type: 'permission_error' } });
+  if (!subkey) {
+    req.log.warn({ event: 'gateway_request_rejected', error_reason: 'invalid_token', provider: null, model: payload.model || null }, 'gateway request rejected');
+    return reply.code(401).send(ERR('INVALID_TOKEN', 'Invalid subkey.'));
   }
 
+  const logAndReject = async (httpCode, errorCode, message, status, errorReason) => {
+    await insertRequestLog({ req, subkey, model: payload.model || null, status, errorReason, source, latencyMs: finishMs() });
+    return reply.code(httpCode).send(ERR(errorCode, message));
+  };
 
-  if (Number(subkey.tokens_used || 0) >= Number(subkey.monthly_token_limit || 0)) {
-    await query(`INSERT INTO request_logs (id,project_id,subkey_id,subkey_name,model,tokens_used,status,source,latency_ms) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`, [randomUUID(), subkey.project_id, subkey.id, subkey.name, (req.body||{}).model || null, 0, 'quota_reached', req.headers['x-keygate-client'] || 'external', Date.now() - started]);
-    return reply.code(403).send({
-      error: {
-        message: 'Quota reached for this subkey. Please use /api/quota-requests endpoint to request a quota extension.',
-        type: 'quota_error',
-      }
-    });
-  }
+  if (subkey.status !== 'active') return logAndReject(403, 'SUBKEY_INACTIVE', `Subkey is ${subkey.status}.`, 'rejected', 'subkey_inactive');
+  if (subkey.expires_at && new Date(subkey.expires_at).getTime() < Date.now()) return logAndReject(403, 'SUBKEY_EXPIRED', 'Subkey expired.', 'rejected', 'subkey_expired');
+  if (Number(subkey.request_count || 0) >= Number(subkey.max_requests || 5000)) return logAndReject(403, 'MAX_REQUESTS_REACHED', 'Max requests reached.', 'max_requests_reached', 'max_requests_reached');
+  if (Number(subkey.tokens_used || 0) >= Number(subkey.monthly_token_limit || 0)) return logAndReject(403, 'QUOTA_EXCEEDED', 'Quota reached for this subkey. Please use /api/quota-requests endpoint to request a quota extension.', 'quota_reached', 'quota_exceeded');
+
   const rate = await rateLimitBySubkey(subkey.id, Number(subkey.requests_per_minute_limit || DEFAULT_RPM_LIMIT));
   reply.header('X-RateLimit-Limit', String(rate.limit));
   reply.header('X-RateLimit-Remaining', String(rate.remaining));
   reply.header('X-RateLimit-Reset', String(rate.reset));
-  if (!rate.allowed) return reply.code(429).send({ code: 'RATE_LIMIT_EXCEEDED', message: 'Too many requests. Try again later.' });
+  if (!rate.allowed) return logAndReject(429, 'RATE_LIMIT_EXCEEDED', 'Too many requests. Try again later.', 'rate_limited', 'rate_limit_exceeded');
+
+  const modelProviderExpected = String(payload.model || '').startsWith('gemini') ? 'google' : 'openai';
+  if (payload.model && modelProviderExpected !== subkey.provider) {
+    return logAndReject(400, 'MODEL_PROVIDER_MISMATCH', `Model ${payload.model} does not match provider ${subkey.provider}`, 'rejected', 'model_provider_mismatch');
+  }
+  const allowed = subkey.allowed_models === 'all'
+    || (Array.isArray(subkey.allowed_models) && (subkey.allowed_models.includes('all') || subkey.allowed_models.includes(payload.model)));
+  if (!allowed) return logAndReject(403, 'MODEL_NOT_ALLOWED', 'Model not allowed for this subkey.', 'rejected', 'model_not_allowed');
 
   const mkQuery = subkey.master_key_id
     ? query('SELECT * FROM master_keys WHERE id = $1 AND provider = $2 AND project_id = $3 LIMIT 1', [subkey.master_key_id, subkey.provider, subkey.project_id])
     : query('SELECT * FROM master_keys WHERE provider = $1 AND project_id = $2 ORDER BY created_at DESC LIMIT 1', [subkey.provider, subkey.project_id]);
   const { rows: mkRows } = await mkQuery;
   const mk = mkRows[0];
-  if (!mk) return reply.code(400).send({ error: { message: `No master key found for provider ${subkey.provider}.`, type: 'config_error' } });
+  if (!mk) return logAndReject(400, 'MASTER_KEY_MISSING', `No master key found for provider ${subkey.provider}.`, 'config_error', 'master_key_missing');
 
   const providerKey = decryptSecret(mk, subkey.provider);
-  const payload = req.body || {};
-  const modelProviderExpected = String(payload.model || '').startsWith('gemini') ? 'google' : 'openai';
-  if (payload.model && modelProviderExpected !== subkey.provider) {
-    return reply.code(400).send(ERR('MODEL_PROVIDER_MISMATCH', `Model ${payload.model} does not match provider ${subkey.provider}`));
-  }
-  const allowed = subkey.allowed_models === 'all'
-    || (Array.isArray(subkey.allowed_models) && (subkey.allowed_models.includes('all') || subkey.allowed_models.includes(payload.model)));
-  if (!allowed) return reply.code(403).send({ error: { message: 'Model not allowed for this subkey.', type: 'permission_error' } });
-
-  let status = 'success'; let tokensUsed = 0; let responseBody; let statusCode = 200;
+  let status = 'success'; let errorReason = null; let responseBody; let statusCode = 200;
+  let tokensUsed = 0; let promptTokens = 0; let completionTokens = 0; let estimatedCostUsd = 0;
   try {
     let upstream;
     if (subkey.provider === 'google') {
@@ -465,16 +514,32 @@ fastify.post('/v1/chat/completions', async (req, reply) => {
     }
     responseBody = await upstream.json().catch(() => ({}));
     if (subkey.provider === 'google' && upstream.ok) {
-      responseBody = { choices: [{ message: { content: responseBody?.candidates?.[0]?.content?.parts?.[0]?.text || '' } }], usage: { total_tokens: responseBody?.usageMetadata?.totalTokenCount || 0 }, raw: responseBody };
+      const usageMetadata = responseBody?.usageMetadata || {};
+      responseBody = {
+        choices: [{ message: { content: responseBody?.candidates?.[0]?.content?.parts?.[0]?.text || '' } }],
+        usage: {
+          prompt_tokens: Number(usageMetadata.promptTokenCount || 0),
+          completion_tokens: Number(usageMetadata.candidatesTokenCount || 0),
+          total_tokens: Number(usageMetadata.totalTokenCount || 0),
+        },
+        raw: responseBody,
+      };
     }
     statusCode = upstream.status;
-    if (!upstream.ok) status = upstream.status === 429 ? 'rate_limited' : 'error';
-    tokensUsed = Number(responseBody?.usage?.total_tokens || 0);
+    if (!upstream.ok) {
+      status = upstream.status === 429 ? 'rate_limited' : 'error';
+      errorReason = upstream.status === 429 ? 'upstream_rate_limited' : 'upstream_error';
+    }
+    const usage = normalizeUsage(responseBody);
+    tokensUsed = usage.totalTokens;
+    promptTokens = usage.promptTokens;
+    completionTokens = usage.completionTokens;
+    estimatedCostUsd = estimateCostUsd(subkey.provider, payload.model || null, promptTokens, completionTokens, tokensUsed);
   } catch (e) {
-    status = 'error'; responseBody = { error: { message: e.message || 'Upstream request failed', type: 'upstream_error' } }; statusCode = 502;
+    status = 'error'; errorReason = 'upstream_exception'; responseBody = { error: { message: e.message || 'Upstream request failed', type: 'upstream_error' } }; statusCode = 502;
   }
 
-  await query(`INSERT INTO request_logs (id,project_id,subkey_id,subkey_name,model,tokens_used,status,source,latency_ms) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`, [randomUUID(), subkey.project_id, subkey.id, subkey.name, payload.model || null, tokensUsed, status, req.headers['x-keygate-client'] || 'external', Date.now() - started]);
+  await insertRequestLog({ req, subkey, model: payload.model || null, tokensUsed, promptTokens, completionTokens, status, errorReason, source, latencyMs: finishMs(), estimatedCostUsd });
   await query(`UPDATE subkeys SET tokens_used = COALESCE(tokens_used,0) + $1, request_count = COALESCE(request_count,0) + 1 WHERE id = $2`, [tokensUsed, subkey.id]);
   return reply.code(statusCode).send(responseBody);
 });
@@ -500,6 +565,13 @@ async function start() {
     stack TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   )`);
+  await query(`ALTER TABLE request_logs
+    ADD COLUMN IF NOT EXISTS request_id TEXT,
+    ADD COLUMN IF NOT EXISTS provider TEXT,
+    ADD COLUMN IF NOT EXISTS error_reason TEXT,
+    ADD COLUMN IF NOT EXISTS prompt_tokens INTEGER DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS completion_tokens INTEGER DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS estimated_cost_usd NUMERIC(12,6) DEFAULT 0`);
   const { rows: schemaChecks } = await query(`
     SELECT
       EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='projects') AS projects_ok,
@@ -507,11 +579,15 @@ async function start() {
       EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='subkeys' AND column_name='token_iv_b64') AS subkeys_token_iv_ok,
       EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='subkeys' AND column_name='token_auth_tag_b64') AS subkeys_token_tag_ok,
       EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='health_daily') AS health_ok,
-      EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='app_error_logs') AS error_logs_ok
+      EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='app_error_logs') AS error_logs_ok,
+      EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='request_logs' AND column_name='request_id') AS request_log_request_id_ok,
+      EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='request_logs' AND column_name='provider') AS request_log_provider_ok,
+      EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='request_logs' AND column_name='error_reason') AS request_log_error_reason_ok,
+      EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='request_logs' AND column_name='estimated_cost_usd') AS request_log_cost_ok
   `);
   const c = schemaChecks[0] || {};
-  if (!(c.projects_ok && c.subkeys_token_cipher_ok && c.subkeys_token_iv_ok && c.subkeys_token_tag_ok && c.health_ok && c.error_logs_ok)) {
-    throw new Error('Schema drift detected. Apply migrations in order: 001_initial_postgres.sql, 002_health_monitoring.sql, 003_request_error_logs.sql');
+  if (!(c.projects_ok && c.subkeys_token_cipher_ok && c.subkeys_token_iv_ok && c.subkeys_token_tag_ok && c.health_ok && c.error_logs_ok && c.request_log_request_id_ok && c.request_log_provider_ok && c.request_log_error_reason_ok && c.request_log_cost_ok)) {
+    throw new Error('Schema drift detected. Apply migrations in order: 001_initial_postgres.sql, 002_health_monitoring.sql, 003_request_error_logs.sql, 004_request_log_details.sql');
   }
 
   const writeDailyHealth = async () => {
