@@ -32,6 +32,7 @@ export default function App() {
   const [notif, setNotif] = useState({ show: false, msg: '', type: 'success' });
   const [modal, setModal] = useState('');
   const [revealedToken, setRevealedToken] = useState('—');
+  const [providers, setProviders] = useState([]);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const notify = (msg, type = 'success') => { setNotif({ show: true, msg, type }); setTimeout(() => setNotif((v) => ({ ...v, show: false })), 3000); };
@@ -54,6 +55,8 @@ export default function App() {
     return data;
   };
 
+  const loadProviders = async () => { const res = await api('/api/providers', { headers: {} }); setProviders(res.providers || []); return res.providers || []; };
+
   const loadProjects = async () => {
     const rows = await api('/api/projects', { headers: {} });
     setProjects(rows);
@@ -66,6 +69,7 @@ export default function App() {
 
   useEffect(() => {
     if (isPublicHealth) return;
+    loadProviders().catch(() => {});
     loadProjects().then((ps) => {
       const list = ps || [];
       if (!list.length) {
@@ -92,7 +96,7 @@ export default function App() {
 
   const navigate = async (p) => go(`/console/${projectSlug}/${p}`);
 
-  const ctx = useMemo(() => ({ API, fmtNum, fmtTime, fmtDate, quotaColor, sleep, api, notify, copyText, modal, setModal, revealedToken, setRevealedToken, loadMasterKeys, loadSubkeys, loadLogs, loadOverview, subkeys, setSubkeys, masterKeys, logs, analytics, page }), [modal, subkeys, masterKeys, logs, analytics, revealedToken, page, projectSlug]);
+  const ctx = useMemo(() => ({ API, providers, loadProviders, fmtNum, fmtTime, fmtDate, quotaColor, sleep, api, notify, copyText, modal, setModal, revealedToken, setRevealedToken, loadMasterKeys, loadSubkeys, loadLogs, loadOverview, subkeys, setSubkeys, masterKeys, logs, analytics, page }), [modal, subkeys, masterKeys, logs, analytics, revealedToken, page, projectSlug, providers]);
 
   const createProject = async () => {
     if (projects.length >= 3) return notify('Maximum 3 projects allowed for now', 'error');

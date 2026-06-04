@@ -1,13 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import '../styles/DemoPage.css';
-
-const PROVIDER_MODELS = {
-  openai: ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-mini', 'gpt-4.1'],
-  google: ['gemini-2.5-flash', 'gemini-2.5-pro'],
-};
+import { FALLBACK_PROVIDERS, parseAllowedModels, providerDefaultModel, providerLabel, providerModels } from '../../lib/providers';
 
 export default function DemoPage({ ctx }) {
-  const { subkeys, API, api, notify, sleep, copyText } = ctx;
+  const { subkeys, API, api, notify, sleep, copyText, providers = FALLBACK_PROVIDERS } = ctx;
+  const providerOptions = providers.length ? providers : FALLBACK_PROVIDERS;
   const [selectedSubkeyId, setSelectedSubkeyId] = useState('');
   const [model, setModel] = useState('gpt-4o-mini');
   const [prompt, setPrompt] = useState('Say hello in exactly 5 words.');
@@ -18,24 +15,18 @@ export default function DemoPage({ ctx }) {
   const tokenPreview = selectedSubkey?.token_preview || '';
 
   const allowedModelList = useMemo(() => {
-    if (!selectedSubkey) return PROVIDER_MODELS.openai;
+    if (!selectedSubkey) return providerModels(providerOptions, 'openai');
 
-    const providerDefaults = PROVIDER_MODELS[selectedSubkey.provider] || PROVIDER_MODELS.openai;
-    if (!selectedSubkey.allowed_models || selectedSubkey.allowed_models === 'all') return providerDefaults;
-
-    try {
-      const allowed = JSON.parse(selectedSubkey.allowed_models);
-      if (!Array.isArray(allowed) || !allowed.length || allowed.includes('all')) return providerDefaults;
-      const filtered = allowed.filter((m) => providerDefaults.includes(m));
-      return filtered.length ? filtered : providerDefaults;
-    } catch {
-      return providerDefaults;
-    }
-  }, [selectedSubkey]);
+    const providerDefaults = providerModels(providerOptions, selectedSubkey.provider);
+    const allowed = parseAllowedModels(selectedSubkey.allowed_models);
+    if (!allowed.length || allowed.includes('all')) return providerDefaults;
+    const filtered = allowed.filter((m) => providerDefaults.includes(m));
+    return filtered.length ? filtered : providerDefaults;
+  }, [selectedSubkey, providerOptions]);
 
   useEffect(() => {
-    if (!allowedModelList.includes(model)) setModel(allowedModelList[0] || 'gpt-4o-mini');
-  }, [allowedModelList, model]);
+    if (!allowedModelList.includes(model)) setModel(allowedModelList[0] || providerDefaultModel(providerOptions, selectedSubkey?.provider || 'openai'));
+  }, [allowedModelList, model, selectedSubkey, providerOptions]);
 
   const preview = !selectedSubkey ? 'Select a subkey to see the request preview...' : `POST /v1/chat/completions\nAuthorization: Bearer ${tokenPreview || 'sk-kg-••••'}\n\n{\n  "model": "${model}",\n  "messages": [{\n    "role": "user",\n    "content": "${prompt}"\n  }]\n}`;
   const add = (line) => setConsoleLines((v) => [...v, line]);
@@ -51,7 +42,7 @@ export default function DemoPage({ ctx }) {
     const tokenHint = selectedSubkey.token_preview || selectedSubkey.token_prefix || 'sk-kg-';
     setConsoleLines([`$ sending request with subkey ${tokenHint}…`]);
     await sleep(250); add('→ validating subkey + model allowlist');
-    await sleep(250); add(`→ model selected: ${model}`);
+    await sleep(250); add(`→ provider/model: ${providerLabel(providerOptions, selectedSubkey.provider)} / ${model}`);
     try {
       const demoToken = (await api(`/api/subkeys/${selectedSubkey.id}/demo-token`)).token;
       const res = await fetch(API + '/v1/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-keygate-client': 'dashboard', Authorization: 'Bearer ' + demoToken }, body: JSON.stringify({ model, messages: [{ role: 'user', content: prompt }], max_tokens: 150 }) });
@@ -68,7 +59,7 @@ export default function DemoPage({ ctx }) {
       <div className='card'><div className='card-header'><div className='card-title'>Configure test call</div></div>
         {!active.length && <div className='empty-text'>No active subkeys. <button className='btn btn-sm btn-ghost' onClick={()=>{ window.history.pushState({},'',window.location.pathname.replace('/demo','/subkeys')); window.dispatchEvent(new PopStateEvent('popstate')); }}>Create Subkey</button></div>}
         <div className='field' style={{marginBottom:10}}><label>Subkey to test</label><select value={selectedSubkeyId} onChange={(e) => setSelectedSubkeyId(e.target.value)}><option value=''>— select a subkey —</option>{active.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
-        <div className='field' style={{marginBottom:10}}><label>Model</label><select value={model} onChange={(e) => setModel(e.target.value)}>{allowedModelList.map((m) => <option key={m} value={m}>{m}</option>)}</select></div>
+        <div className='field' style={{marginBottom:10}}><label>Provider</label><div className='badge active'>{selectedSubkey ? providerLabel(providerOptions, selectedSubkey.provider) : 'Select a subkey'}</div></div><div className='field' style={{marginBottom:10}}><label>Model</label><select value={model} onChange={(e) => setModel(e.target.value)}>{allowedModelList.map((m) => <option key={m} value={m}>{m}</option>)}</select><div style={{fontSize:11,color:'var(--muted)',marginTop:4}}>Only models allowed by the selected subkey are shown.</div></div>
         <div className='field' style={{marginBottom:14}}><label>Prompt</label><input value={prompt} onChange={(e) => setPrompt(e.target.value)} /></div>
         <button className='btn btn-primary' style={{ width: '100%', marginTop: 6, minHeight: 42 }} onClick={runDemo}>Run test call →</button>
       </div>

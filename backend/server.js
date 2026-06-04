@@ -5,6 +5,7 @@ const { randomUUID, createHash } = require('crypto');
 const fastify = require('fastify')({ logger: { level: 'info' }, genReqId: () => randomUUID() });
 const { createClient } = require('redis');
 const { query, initDb, encryptSecret, decryptSecret } = require('./db');
+const { listProviders, listModels, getProvider, getProviderForModel, getDefaultModel, isModelAllowedForProvider, normalizeAllowedModels, normalizeUsage, estimateCostUsd, callProvider, normalizeProviderResponse } = require('./providers');
 
 const DEFAULT_RPM_LIMIT = Number(process.env.RATE_LIMIT_DEFAULT_PER_MIN || 2);
 const redis = createClient({ url: process.env.REDIS_URL });
@@ -20,29 +21,6 @@ fastify.register(require('@fastify/helmet'), { contentSecurityPolicy: false });
 
 function hashToken(token) { return createHash('sha256').update(token).digest('hex'); }
 function maskKey(apiKey) { return apiKey.slice(0, 7) + '••••••••' + apiKey.slice(-4); }
-
-function normalizeUsage(body = {}) {
-  const usage = body.usage || {};
-  const promptTokens = Number(usage.prompt_tokens ?? usage.input_tokens ?? 0) || 0;
-  const completionTokens = Number(usage.completion_tokens ?? usage.output_tokens ?? 0) || 0;
-  const totalTokens = Number(usage.total_tokens ?? (promptTokens + completionTokens)) || 0;
-  return { promptTokens, completionTokens, totalTokens };
-}
-
-function estimateCostUsd(provider, model, promptTokens = 0, completionTokens = 0, totalTokens = 0) {
-  const key = String(model || '').toLowerCase();
-  let inputPerMillion = 0.15;
-  let outputPerMillion = 0.60;
-  if (provider === 'google') {
-    inputPerMillion = key.includes('pro') ? 1.25 : 0.30;
-    outputPerMillion = key.includes('pro') ? 10.00 : 2.50;
-  } else if (key.includes('gpt-4o') && !key.includes('mini')) {
-    inputPerMillion = 2.50;
-    outputPerMillion = 10.00;
-  }
-  const effectivePrompt = promptTokens || totalTokens;
-  return Number((((effectivePrompt / 1_000_000) * inputPerMillion) + ((completionTokens / 1_000_000) * outputPerMillion)).toFixed(6));
-}
 
 async function insertRequestLog({ req, subkey = {}, model = null, tokensUsed = 0, promptTokens = 0, completionTokens = 0, status, errorReason = null, source, latencyMs, estimatedCostUsd = 0 }) {
   const id = randomUUID();
@@ -255,6 +233,7 @@ fastify.post('/api/master-keys', {
   const project = await getProject(req, reply); if (!project) return;
   const { provider, api_key, name } = req.body || {};
   if (!provider || !api_key) return reply.code(400).send(ERR('VALIDATION_ERROR', 'provider and api_key required'));
+  if (!getProvider(provider)) return reply.code(400).send(ERR('UNKNOWN_PROVIDER', `Unknown provider ${provider}`));
   const encrypted = encryptSecret(api_key, provider);
   await query(
     `INSERT INTO master_keys (id, project_id, provider, name, key_masked, ciphertext_b64, iv_b64, auth_tag_b64, key_version)
@@ -381,15 +360,21 @@ fastify.post('/api/subkeys', {
   const project = await getProject(req, reply); if (!project) return;
   const { name, provider, master_key_id = null, auto_route_on_exhausted = false, monthly_token_limit = 50000, max_requests = 5000, allowed_models = ['all'], spend_limit_usd = null, expires_in_days = null } = req.body || {};
   if (!name || !provider) return reply.code(400).send(ERR('VALIDATION_ERROR', 'name and provider required'));
+  const providerConfig = getProvider(provider);
+  if (!providerConfig) return reply.code(400).send(ERR('UNKNOWN_PROVIDER', `Unknown provider ${provider}`));
+  const normalizedAllowed = normalizeAllowedModels(allowed_models);
+  const invalidModels = normalizedAllowed.includes('all') ? [] : normalizedAllowed.filter((model) => !isModelAllowedForProvider(provider, model));
+  if (invalidModels.length) return reply.code(400).send(ERR('MODEL_PROVIDER_MISMATCH', `Models not valid for ${provider}: ${invalidModels.join(', ')}`));
   const id = randomUUID();
   const token = `sk-kg-${randomUUID().replace(/-/g, '')}`;
   const enc = encryptSecret(token, `subkey:${id}`);
   const expiresAt = expires_in_days ? new Date(Date.now() + Number(expires_in_days) * 86400 * 1000) : null;
-  await query(`INSERT INTO subkeys (id,project_id,name,token_hash,token_prefix,token_ciphertext_b64,token_iv_b64,token_auth_tag_b64,token_key_version,provider,master_key_id,auto_route_on_exhausted,monthly_token_limit,requests_per_minute_limit,spend_limit_usd,max_requests,allowed_models,expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`, [id, project.id, name, hashToken(token), token.slice(0, 12), enc.ciphertext_b64, enc.iv_b64, enc.auth_tag_b64, enc.key_version, provider, master_key_id, Boolean(auto_route_on_exhausted), Number(monthly_token_limit) || 50000, DEFAULT_RPM_LIMIT, spend_limit_usd, Number(max_requests) || 5000, JSON.stringify(allowed_models && allowed_models.length ? allowed_models : ['all']), expiresAt]);
+  await query(`INSERT INTO subkeys (id,project_id,name,token_hash,token_prefix,token_ciphertext_b64,token_iv_b64,token_auth_tag_b64,token_key_version,provider,master_key_id,auto_route_on_exhausted,monthly_token_limit,requests_per_minute_limit,spend_limit_usd,max_requests,allowed_models,expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`, [id, project.id, name, hashToken(token), token.slice(0, 12), enc.ciphertext_b64, enc.iv_b64, enc.auth_tag_b64, enc.key_version, provider, master_key_id, Boolean(auto_route_on_exhausted), Number(monthly_token_limit) || 50000, DEFAULT_RPM_LIMIT, spend_limit_usd, Number(max_requests) || 5000, JSON.stringify(normalizedAllowed), expiresAt]);
   return { id, name, provider, token_prefix: token.slice(0, 12), token, requests_per_minute_limit: DEFAULT_RPM_LIMIT };
 });
 
-fastify.get('/api/models', async () => ({ data: [{ id: 'gpt-4o-mini' }, { id: 'gpt-4o' }, { id: 'gpt-4.1-mini' }, { id: 'gpt-4.1' }, { id: 'gemini-2.5-flash' }, { id: 'gemini-2.5-pro' }] }));
+fastify.get('/api/providers', async () => ({ providers: listProviders() }));
+fastify.get('/api/models', async (req) => ({ data: listModels(req.query?.provider) }));
 
 fastify.get('/api/analytics', async (req, reply) => {
   const project = await getProject(req, reply); if (!project) return;
@@ -469,8 +454,10 @@ fastify.post('/v1/chat/completions', async (req, reply) => {
     return reply.code(401).send(ERR('INVALID_TOKEN', 'Invalid subkey.'));
   }
 
+  const requestedModel = payload.model || getDefaultModel(subkey.provider) || null;
+
   const logAndReject = async (httpCode, errorCode, message, status, errorReason) => {
-    await insertRequestLog({ req, subkey, model: payload.model || null, status, errorReason, source, latencyMs: finishMs() });
+    await insertRequestLog({ req, subkey, model: requestedModel, status, errorReason, source, latencyMs: finishMs() });
     return reply.code(httpCode).send(ERR(errorCode, message));
   };
 
@@ -485,12 +472,15 @@ fastify.post('/v1/chat/completions', async (req, reply) => {
   reply.header('X-RateLimit-Reset', String(rate.reset));
   if (!rate.allowed) return logAndReject(429, 'RATE_LIMIT_EXCEEDED', 'Too many requests. Try again later.', 'rate_limited', 'rate_limit_exceeded');
 
-  const modelProviderExpected = String(payload.model || '').startsWith('gemini') ? 'google' : 'openai';
-  if (payload.model && modelProviderExpected !== subkey.provider) {
-    return logAndReject(400, 'MODEL_PROVIDER_MISMATCH', `Model ${payload.model} does not match provider ${subkey.provider}`, 'rejected', 'model_provider_mismatch');
+  const providerConfig = getProvider(subkey.provider);
+  if (!providerConfig) return logAndReject(400, 'UNKNOWN_PROVIDER', `Unknown provider ${subkey.provider}`, 'config_error', 'unknown_provider');
+  const modelOwner = getProviderForModel(requestedModel);
+  if (!modelOwner) return logAndReject(400, 'UNKNOWN_MODEL', `Unknown model ${requestedModel}`, 'rejected', 'unknown_model');
+  if (modelOwner.id !== subkey.provider) {
+    return logAndReject(400, 'MODEL_PROVIDER_MISMATCH', `Model ${requestedModel} does not match provider ${subkey.provider}`, 'rejected', 'model_provider_mismatch');
   }
-  const allowed = subkey.allowed_models === 'all'
-    || (Array.isArray(subkey.allowed_models) && (subkey.allowed_models.includes('all') || subkey.allowed_models.includes(payload.model)));
+  const allowedModels = normalizeAllowedModels(subkey.allowed_models);
+  const allowed = allowedModels.includes('all') || allowedModels.includes(requestedModel);
   if (!allowed) return logAndReject(403, 'MODEL_NOT_ALLOWED', 'Model not allowed for this subkey.', 'rejected', 'model_not_allowed');
 
   const mkQuery = subkey.master_key_id
@@ -504,27 +494,9 @@ fastify.post('/v1/chat/completions', async (req, reply) => {
   let status = 'success'; let errorReason = null; let responseBody; let statusCode = 200;
   let tokensUsed = 0; let promptTokens = 0; let completionTokens = 0; let estimatedCostUsd = 0;
   try {
-    let upstream;
-    if (subkey.provider === 'google') {
-      const geminiModel = payload.model || 'gemini-2.5-flash';
-      const geminiBody = { contents: [{ role: 'user', parts: [{ text: (payload.messages || []).map((m) => m.content).join('\n') || '' }] }] };
-      upstream = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${providerKey}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(geminiBody) });
-    } else {
-      upstream = await fetch('https://api.openai.com/v1/chat/completions', { method: 'POST', headers: { Authorization: `Bearer ${providerKey}`, 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-    }
-    responseBody = await upstream.json().catch(() => ({}));
-    if (subkey.provider === 'google' && upstream.ok) {
-      const usageMetadata = responseBody?.usageMetadata || {};
-      responseBody = {
-        choices: [{ message: { content: responseBody?.candidates?.[0]?.content?.parts?.[0]?.text || '' } }],
-        usage: {
-          prompt_tokens: Number(usageMetadata.promptTokenCount || 0),
-          completion_tokens: Number(usageMetadata.candidatesTokenCount || 0),
-          total_tokens: Number(usageMetadata.totalTokenCount || 0),
-        },
-        raw: responseBody,
-      };
-    }
+    const upstream = await callProvider({ provider: providerConfig, apiKey: providerKey, payload, model: requestedModel });
+    const rawBody = await upstream.json().catch(() => ({}));
+    responseBody = normalizeProviderResponse(providerConfig, rawBody, upstream.ok);
     statusCode = upstream.status;
     if (!upstream.ok) {
       status = upstream.status === 429 ? 'rate_limited' : 'error';
@@ -534,12 +506,12 @@ fastify.post('/v1/chat/completions', async (req, reply) => {
     tokensUsed = usage.totalTokens;
     promptTokens = usage.promptTokens;
     completionTokens = usage.completionTokens;
-    estimatedCostUsd = estimateCostUsd(subkey.provider, payload.model || null, promptTokens, completionTokens, tokensUsed);
+    estimatedCostUsd = estimateCostUsd(subkey.provider, requestedModel, promptTokens, completionTokens, tokensUsed);
   } catch (e) {
     status = 'error'; errorReason = 'upstream_exception'; responseBody = { error: { message: e.message || 'Upstream request failed', type: 'upstream_error' } }; statusCode = 502;
   }
 
-  await insertRequestLog({ req, subkey, model: payload.model || null, tokensUsed, promptTokens, completionTokens, status, errorReason, source, latencyMs: finishMs(), estimatedCostUsd });
+  await insertRequestLog({ req, subkey, model: requestedModel, tokensUsed, promptTokens, completionTokens, status, errorReason, source, latencyMs: finishMs(), estimatedCostUsd });
   await query(`UPDATE subkeys SET tokens_used = COALESCE(tokens_used,0) + $1, request_count = COALESCE(request_count,0) + 1 WHERE id = $2`, [tokensUsed, subkey.id]);
   return reply.code(statusCode).send(responseBody);
 });
