@@ -7,19 +7,15 @@ const PROVIDER_MODELS = {
 };
 
 export default function DemoPage({ ctx }) {
-  const { subkeys, API, notify, sleep, copyText } = ctx;
-  const [token, setToken] = useState('');
+  const { subkeys, API, api, notify, sleep, copyText } = ctx;
+  const [selectedSubkeyId, setSelectedSubkeyId] = useState('');
   const [model, setModel] = useState('gpt-4o-mini');
   const [prompt, setPrompt] = useState('Say hello in exactly 5 words.');
   const [consoleLines, setConsoleLines] = useState(['# KeyGate live proxy demo', '# Select a subkey and hit "Run test call" to see the magic', 'ready — waiting for request']);
 
   const active = subkeys.filter((s) => s.status === 'active');
-  const selectedSubkey = active.find((s) => s.token === token);
-
-  const providerModelList = useMemo(() => {
-    const provider = selectedSubkey?.provider || 'openai';
-    return PROVIDER_MODELS[provider] || PROVIDER_MODELS.openai;
-  }, [selectedSubkey]);
+  const selectedSubkey = active.find((s) => s.id === selectedSubkeyId);
+  const tokenPreview = selectedSubkey?.token_preview || '';
 
   const allowedModelList = useMemo(() => {
     if (!selectedSubkey) return PROVIDER_MODELS.openai;
@@ -41,22 +37,24 @@ export default function DemoPage({ ctx }) {
     if (!allowedModelList.includes(model)) setModel(allowedModelList[0] || 'gpt-4o-mini');
   }, [allowedModelList, model]);
 
-  const preview = !token ? 'Select a subkey to see the request preview...' : `POST /v1/chat/completions\nAuthorization: Bearer ${token.slice(0, 12)}••••••\n\n{\n  "model": "${model}",\n  "messages": [{\n    "role": "user",\n    "content": "${prompt}"\n  }]\n}`;
+  const preview = !selectedSubkey ? 'Select a subkey to see the request preview...' : `POST /v1/chat/completions\nAuthorization: Bearer ${tokenPreview || 'sk-kg-••••'}\n\n{\n  "model": "${model}",\n  "messages": [{\n    "role": "user",\n    "content": "${prompt}"\n  }]\n}`;
   const add = (line) => setConsoleLines((v) => [...v, line]);
 
-  const curlSnippet = `TOKEN="${token || 'sk-kg-YourTokenHere'}"\ncurl http://localhost:3001/v1/chat/completions \\\n  -H "Authorization: Bearer $TOKEN" \\\n  -H "Content-Type: application/json" \\\n  -d '{"model":"${model}","messages":[{"role":"user","content":"${prompt}"}]}'`;
-  const jsSnippet = `fetch('http://localhost:3001/v1/chat/completions', {\n  method: 'POST',\n  headers: { Authorization: 'Bearer ${token || 'sk-kg-YourTokenHere'}', 'Content-Type': 'application/json' },\n  body: JSON.stringify({ model: '${model}', messages: [{ role: 'user', content: '${prompt}' }] })\n}).then(r => r.json()).then(console.log);`;
-  const pySnippet = `import requests\nres = requests.post('http://localhost:3001/v1/chat/completions',\n  headers={'Authorization':'Bearer ${token || 'sk-kg-YourTokenHere'}','Content-Type':'application/json'},\n  json={'model':'${model}','messages':[{'role':'user','content':'${prompt}'}]})\nprint(res.json())`;
+  const curlSnippet = `TOKEN="sk-kg-YourTokenHere"\ncurl http://localhost:3001/v1/chat/completions \\\n  -H "Authorization: Bearer $TOKEN" \\\n  -H "Content-Type: application/json" \\\n  -d '{"model":"${model}","messages":[{"role":"user","content":"${prompt}"}]}'`;
+  const jsSnippet = `fetch('http://localhost:3001/v1/chat/completions', {\n  method: 'POST',\n  headers: { Authorization: 'Bearer sk-kg-YourTokenHere', 'Content-Type': 'application/json' },\n  body: JSON.stringify({ model: '${model}', messages: [{ role: 'user', content: '${prompt}' }] })\n}).then(r => r.json()).then(console.log);`;
+  const pySnippet = `import requests\nres = requests.post('http://localhost:3001/v1/chat/completions',\n  headers={'Authorization':'Bearer sk-kg-YourTokenHere','Content-Type':'application/json'},\n  json={'model':'${model}','messages':[{'role':'user','content':'${prompt}'}]})\nprint(res.json())`;
 
   const runDemo = async () => {
-    if (!token) return notify('Select a subkey first', 'error');
+    if (!selectedSubkey) return notify('Select a subkey first', 'error');
     if (!prompt.trim()) return notify('Enter a prompt', 'error');
     if (!model) return notify('Select a model', 'error');
-    setConsoleLines([`$ sending request with subkey ${token.slice(0, 16)}…`]);
+    const tokenHint = selectedSubkey.token_preview || selectedSubkey.token_prefix || 'sk-kg-';
+    setConsoleLines([`$ sending request with subkey ${tokenHint}…`]);
     await sleep(250); add('→ validating subkey + model allowlist');
     await sleep(250); add(`→ model selected: ${model}`);
     try {
-      const res = await fetch(API + '/v1/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-keygate-client': 'dashboard', Authorization: 'Bearer ' + token }, body: JSON.stringify({ model, messages: [{ role: 'user', content: prompt }], max_tokens: 150 }) });
+      const demoToken = (await api(`/api/subkeys/${selectedSubkey.id}/demo-token`)).token;
+      const res = await fetch(API + '/v1/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-keygate-client': 'dashboard', Authorization: 'Bearer ' + demoToken }, body: JSON.stringify({ model, messages: [{ role: 'user', content: prompt }], max_tokens: 150 }) });
       const data = await res.json();
       if (!res.ok) { add(`✗ error ${res.status}: ${data.error?.message || 'unknown error'}`); return; }
       add(`✓ response received`); add(`→ tokens used: ${data.usage?.total_tokens || 0}`); add('AI response:'); add(data.choices?.[0]?.message?.content || ''); notify('Request proxied — check logs for usage');
@@ -68,10 +66,11 @@ export default function DemoPage({ ctx }) {
   return <div className='page active demo-page'><div style={{ padding: '32px 36px' }}><div className='page-header'><div className='page-title'>Live demo</div><div className='page-sub'>See exactly how a client uses a subkey — without ever knowing the real key</div></div>
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
       <div className='card'><div className='card-header'><div className='card-title'>Configure test call</div></div>
-        <div className='field'><label>Subkey to test</label><select value={token} onChange={(e) => setToken(e.target.value)}><option value=''>— select a subkey —</option>{active.map((s) => <option key={s.id} value={s.token}>{s.name}</option>)}</select></div>
-        <div className='field'><label>Model</label><select value={model} onChange={(e) => setModel(e.target.value)}>{allowedModelList.map((m) => <option key={m} value={m}>{m}</option>)}</select></div>
-        <div className='field'><label>Prompt</label><input value={prompt} onChange={(e) => setPrompt(e.target.value)} /></div>
-        <button className='btn btn-primary' style={{ width: '100%' }} onClick={runDemo}>Run test call →</button>
+        {!active.length && <div className='empty-text'>No active subkeys. <button className='btn btn-sm btn-ghost' onClick={()=>{ window.history.pushState({},'',window.location.pathname.replace('/demo','/subkeys')); window.dispatchEvent(new PopStateEvent('popstate')); }}>Create Subkey</button></div>}
+        <div className='field' style={{marginBottom:10}}><label>Subkey to test</label><select value={selectedSubkeyId} onChange={(e) => setSelectedSubkeyId(e.target.value)}><option value=''>— select a subkey —</option>{active.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
+        <div className='field' style={{marginBottom:10}}><label>Model</label><select value={model} onChange={(e) => setModel(e.target.value)}>{allowedModelList.map((m) => <option key={m} value={m}>{m}</option>)}</select></div>
+        <div className='field' style={{marginBottom:14}}><label>Prompt</label><input value={prompt} onChange={(e) => setPrompt(e.target.value)} /></div>
+        <button className='btn btn-primary' style={{ width: '100%', marginTop: 6, minHeight: 42 }} onClick={runDemo}>Run test call →</button>
       </div>
       <div className='card' style={{ background: '#060609' }}><div className='card-title' style={{ color: 'var(--text)' }}>What the client sends</div><pre style={{ fontFamily: 'DM Mono, monospace', fontSize: '12px', color: 'var(--text)', lineHeight: 1.9, whiteSpace: 'pre-wrap', marginTop: '8px' }}>{preview}</pre></div>
     </div>
