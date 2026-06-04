@@ -1468,3 +1468,60 @@ td{
     min-height:calc(100dvh - 58px);
   }
 }
+
+
+/* ── Mobile sidebar polish: keep drawer below sticky header and make toggle state clear ── */
+@media (max-width:900px){
+  .app-shell-header.console-header{
+    position:sticky;
+    top:0;
+    z-index:90;
+    background:linear-gradient(180deg,#12162af5,#0d1121ef);
+    border-bottom:1px solid #ffffff18;
+    box-shadow:0 8px 22px #02040d42;
+    backdrop-filter:blur(16px) saturate(1.2);
+    -webkit-backdrop-filter:blur(16px) saturate(1.2);
+  }
+  .app-shell-mobile.mobile-appbar{
+    min-height:58px;
+    background:transparent;
+    box-shadow:none;
+  }
+  .mobile-menu-toggle{
+    font-size:18px;
+    line-height:1;
+    transition:transform .18s ease,border-color .18s ease,background .18s ease;
+  }
+  .mobile-menu-toggle.active{
+    transform:rotate(90deg);
+    border-color:#9a8fff99;
+    background:linear-gradient(145deg,#7c6bff40,#ffffff12);
+  }
+  .mobile-drawer-backdrop.open{
+    top:58px;
+    z-index:80;
+    background:#02040c80;
+    backdrop-filter:blur(4px);
+  }
+  .mobile-drawer{
+    width:min(82vw,320px);
+    padding:14px 14px 18px;
+    border-top:1px solid #ffffff14;
+    box-shadow:18px 0 34px #02040d5c,inset 0 1px 0 #ffffff18;
+  }
+  .mobile-drawer-title{
+    margin:0 0 10px;
+    padding:2px 2px 8px;
+    border-bottom:1px solid #ffffff10;
+  }
+  .mobile-drawer-list{
+    gap:8px;
+    padding-top:2px;
+  }
+  .mobile-drawer-item{
+    min-height:38px;
+    padding:8px 10px;
+    border-radius:10px;
+    box-shadow:none;
+  }
+}

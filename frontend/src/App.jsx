@@ -221,8 +221,9 @@ export default function App() {
         selectedProject={selectedProject}
         projectSlug={projectSlug}
         onSwitchProject={() => go('/console')}
-        onOpenMobileMenu={() => setMobileMenuOpen(true)}
+        onOpenMobileMenu={() => setMobileMenuOpen((open) => !open)}
         onOpenNotifications={() => navigate('notifications')}
+        mobileMenuOpen={mobileMenuOpen}
       />
       <Sidebar
         page={page}

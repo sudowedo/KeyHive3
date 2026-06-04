@@ -1,4 +1,4 @@
-export default function ConsoleHeader({ page, selectedProject, projectSlug, onSwitchProject, onOpenMobileMenu, onOpenNotifications }) {
+export default function ConsoleHeader({ page, selectedProject, projectSlug, onSwitchProject, onOpenMobileMenu, onOpenNotifications, mobileMenuOpen = false }) {
   const pageTitle = String(page || 'overview').replace(/^./, (m) => m.toUpperCase());
 
   return <header className='console-header app-shell-header'>
@@ -20,7 +20,7 @@ export default function ConsoleHeader({ page, selectedProject, projectSlug, onSw
     </div>
 
     <div className='mobile-appbar app-shell-mobile'>
-      <button className='mobile-icon-btn' onClick={onOpenMobileMenu} aria-label='Open menu'>☰</button>
+      <button className={`mobile-icon-btn mobile-menu-toggle ${mobileMenuOpen ? 'active' : ''}`} onClick={onOpenMobileMenu} aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'} aria-expanded={mobileMenuOpen}>{mobileMenuOpen ? '×' : '☰'}</button>
       <div>
         <div className='mobile-brand'>KeyGate</div>
         <div className='mobile-shell-sub'>{pageTitle}</div>
