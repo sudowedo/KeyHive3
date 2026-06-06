@@ -5,9 +5,22 @@ const fastify = require('fastify')({ logger: false });
 const { randomUUID, createHash } = require('crypto');
 const { createClient } = require('redis');
 const { query, initDb, encryptSecret, decryptSecret } = require('./db');
+const { getProvider, getModels, estimateCostUsd } = require('./providers');
 
 const DEFAULT_RPM_LIMIT = Number(process.env.RATE_LIMIT_DEFAULT_PER_MIN || 2);
-const redis = createClient({ url: process.env.REDIS_URL });
+const redis = createClient({ url: process.env.REDIS_URL, socket: { reconnectStrategy: false } });
+let redisRateLimitEnabled = true;
+let warnedRedisFallback = false;
+const memoryRateLimitCounters = new Map();
+function warnRedisFallback(message) {
+  if (warnedRedisFallback || process.env.NODE_ENV === 'test') return;
+  warnedRedisFallback = true;
+  console.warn(`Redis unavailable; using in-memory rate limiting: ${message || 'connection failed'}`);
+}
+redis.on('error', (err) => {
+  redisRateLimitEnabled = false;
+  warnRedisFallback(err.message || err.code);
+});
 
 fastify.register(require('@fastify/cors'), {
   origin: true,
@@ -19,13 +32,36 @@ fastify.register(require('@fastify/helmet'), { contentSecurityPolicy: false });
 function hashToken(token) { return createHash('sha256').update(token).digest('hex'); }
 function maskKey(apiKey) { return apiKey.slice(0, 7) + '••••••••' + apiKey.slice(-4); }
 
+function rateLimitInMemory(subkeyId, limit, windowStart, windowSec) {
+  const key = `rl:subkey:${subkeyId}:${windowStart}`;
+  for (const [counterKey, counter] of memoryRateLimitCounters.entries()) {
+    if (counter.expiresAt <= Date.now()) memoryRateLimitCounters.delete(counterKey);
+  }
+  const counter = memoryRateLimitCounters.get(key) || { count: 0, expiresAt: (windowStart + windowSec) * 1000 };
+  counter.count += 1;
+  memoryRateLimitCounters.set(key, counter);
+  return counter.count;
+}
+
 async function rateLimitBySubkey(subkeyId, limit = DEFAULT_RPM_LIMIT) {
   const nowSec = Math.floor(Date.now() / 1000);
   const windowSec = 60;
   const windowStart = Math.floor(nowSec / windowSec) * windowSec;
-  const redisKey = `rl:subkey:${subkeyId}:${windowStart}`;
-  const count = await redis.incr(redisKey);
-  if (count === 1) await redis.expire(redisKey, windowSec);
+  let count;
+
+  if (redisRateLimitEnabled && redis.isOpen) {
+    try {
+      const redisKey = `rl:subkey:${subkeyId}:${windowStart}`;
+      count = await redis.incr(redisKey);
+      if (count === 1) await redis.expire(redisKey, windowSec);
+    } catch (err) {
+      redisRateLimitEnabled = false;
+      warnRedisFallback(err.message || err.code);
+    }
+  }
+
+  if (!count) count = rateLimitInMemory(subkeyId, limit, windowStart, windowSec);
+
   const remaining = Math.max(limit - count, 0);
   const reset = windowStart + windowSec;
   return { remaining, reset, limit, allowed: count <= limit };
@@ -96,7 +132,7 @@ fastify.post('/api/subkeys', async (req, reply) => {
   return { id, name, provider, token_prefix: token.slice(0, 12), token, requests_per_minute_limit: DEFAULT_RPM_LIMIT };
 });
 
-fastify.get('/api/models', async () => ({ data: [{ id: 'gpt-4o-mini' }, { id: 'gpt-4o' }, { id: 'gpt-4.1-mini' }, { id: 'gpt-4.1' }, { id: 'gemini-2.5-flash' }, { id: 'gemini-2.5-pro' }] }));
+fastify.get('/api/models', async () => ({ data: getModels() }));
 
 fastify.get('/api/analytics', async () => {
   const [{ rows: totals }, { rows: logs }] = await Promise.all([
@@ -108,10 +144,8 @@ fastify.get('/api/analytics', async () => {
   const avgLatency = logs.length ? Math.round(logs.reduce((s, r) => s + Number(r.latency_ms || 0), 0) / logs.length) : 0;
   const topModels = [...logs.reduce((m, r) => (m.set(r.model || 'unknown', (m.get(r.model || 'unknown') || 0) + 1), m), new Map()).entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([model, count]) => ({ model, count }));
   const costAttribution = logs.map((l) => {
-    const t = Number(l.tokens_used || 0);
-    const isGemini = String(l.model || '').startsWith('gemini');
-    const est_cost_usd = isGemini ? (t / 1_000_000) * 0.15 : (t / 1_000_000) * 2.0;
-    return { model: l.model || 'unknown', est_cost_usd };
+    const model = l.model || 'unknown';
+    return { model, est_cost_usd: estimateCostUsd(model, l.tokens_used) };
   });
   return { totalRequests, totalTokens, avgLatency, topModels, logs, costAttribution };
 });
@@ -185,28 +219,28 @@ fastify.post('/v1/chat/completions', async (req, reply) => {
   const mk = mkRows[0];
   if (!mk) return reply.code(400).send({ error: { message: `No master key found for provider ${subkey.provider}.`, type: 'config_error' } });
 
+  const provider = getProvider(subkey.provider);
+  if (!provider) return reply.code(400).send({ error: { message: `Unsupported provider ${subkey.provider}.`, type: 'config_error' } });
+
   const providerKey = decryptSecret(mk, subkey.provider);
-  const payload = req.body || {};
+  const payload = { ...(req.body || {}) };
+  payload.model = payload.model || provider.defaultModel;
   const allowed = subkey.allowed_models === 'all' || (Array.isArray(subkey.allowed_models) && subkey.allowed_models.includes(payload.model));
   if (!allowed) return reply.code(403).send({ error: { message: 'Model not allowed for this subkey.', type: 'permission_error' } });
 
   let status = 'success'; let tokensUsed = 0; let responseBody; let statusCode = 200;
   try {
-    let upstream;
-    if (subkey.provider === 'google') {
-      const geminiModel = payload.model || 'gemini-2.5-flash';
-      const geminiBody = { contents: [{ role: 'user', parts: [{ text: (payload.messages || []).map((m) => m.content).join('\n') || '' }] }] };
-      upstream = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${providerKey}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(geminiBody) });
-    } else {
-      upstream = await fetch('https://api.openai.com/v1/chat/completions', { method: 'POST', headers: { Authorization: `Bearer ${providerKey}`, 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-    }
-    responseBody = await upstream.json().catch(() => ({}));
-    if (subkey.provider === 'google' && upstream.ok) {
-      responseBody = { choices: [{ message: { content: responseBody?.candidates?.[0]?.content?.parts?.[0]?.text || '' } }], usage: { total_tokens: responseBody?.usageMetadata?.totalTokenCount || 0 }, raw: responseBody };
-    }
+    const upstreamBody = provider.transformRequest(payload);
+    const upstream = await fetch(provider.upstreamUrl(payload, providerKey), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...provider.buildAuthHeaders(providerKey) },
+      body: JSON.stringify(upstreamBody),
+    });
+    const rawBody = await upstream.json().catch(() => ({}));
+    responseBody = upstream.ok ? provider.normalizeResponse(rawBody) : rawBody;
     statusCode = upstream.status;
     if (!upstream.ok) status = upstream.status === 429 ? 'rate_limited' : 'error';
-    tokensUsed = Number(responseBody?.usage?.total_tokens || 0);
+    tokensUsed = Number((upstream.ok ? provider.normalizeTokenUsage(rawBody) : provider.normalizeTokenUsage(responseBody))?.total_tokens || responseBody?.usage?.total_tokens || 0);
   } catch (e) {
     status = 'error'; responseBody = { error: { message: e.message || 'Upstream request failed', type: 'upstream_error' } }; statusCode = 502;
   }
@@ -217,7 +251,12 @@ fastify.post('/v1/chat/completions', async (req, reply) => {
 });
 
 async function start() {
-  await redis.connect();
+  try {
+    await redis.connect();
+  } catch (err) {
+    redisRateLimitEnabled = false;
+    warnRedisFallback(err.message || err.code);
+  }
   await initDb();
   const port = 3001;
   await fastify.listen({ port, host: '0.0.0.0' });
