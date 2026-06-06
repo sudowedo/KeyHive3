@@ -8,7 +8,19 @@ const { query, initDb, encryptSecret, decryptSecret } = require('./db');
 const { getProvider, getModels, estimateCostUsd } = require('./providers');
 
 const DEFAULT_RPM_LIMIT = Number(process.env.RATE_LIMIT_DEFAULT_PER_MIN || 2);
-const redis = createClient({ url: process.env.REDIS_URL });
+const redis = createClient({ url: process.env.REDIS_URL, socket: { reconnectStrategy: false } });
+let redisRateLimitEnabled = true;
+let warnedRedisFallback = false;
+const memoryRateLimitCounters = new Map();
+function warnRedisFallback(message) {
+  if (warnedRedisFallback || process.env.NODE_ENV === 'test') return;
+  warnedRedisFallback = true;
+  console.warn(`Redis unavailable; using in-memory rate limiting: ${message || 'connection failed'}`);
+}
+redis.on('error', (err) => {
+  redisRateLimitEnabled = false;
+  warnRedisFallback(err.message || err.code);
+});
 
 fastify.register(require('@fastify/cors'), {
   origin: true,
@@ -20,13 +32,36 @@ fastify.register(require('@fastify/helmet'), { contentSecurityPolicy: false });
 function hashToken(token) { return createHash('sha256').update(token).digest('hex'); }
 function maskKey(apiKey) { return apiKey.slice(0, 7) + '••••••••' + apiKey.slice(-4); }
 
+function rateLimitInMemory(subkeyId, limit, windowStart, windowSec) {
+  const key = `rl:subkey:${subkeyId}:${windowStart}`;
+  for (const [counterKey, counter] of memoryRateLimitCounters.entries()) {
+    if (counter.expiresAt <= Date.now()) memoryRateLimitCounters.delete(counterKey);
+  }
+  const counter = memoryRateLimitCounters.get(key) || { count: 0, expiresAt: (windowStart + windowSec) * 1000 };
+  counter.count += 1;
+  memoryRateLimitCounters.set(key, counter);
+  return counter.count;
+}
+
 async function rateLimitBySubkey(subkeyId, limit = DEFAULT_RPM_LIMIT) {
   const nowSec = Math.floor(Date.now() / 1000);
   const windowSec = 60;
   const windowStart = Math.floor(nowSec / windowSec) * windowSec;
-  const redisKey = `rl:subkey:${subkeyId}:${windowStart}`;
-  const count = await redis.incr(redisKey);
-  if (count === 1) await redis.expire(redisKey, windowSec);
+  let count;
+
+  if (redisRateLimitEnabled && redis.isOpen) {
+    try {
+      const redisKey = `rl:subkey:${subkeyId}:${windowStart}`;
+      count = await redis.incr(redisKey);
+      if (count === 1) await redis.expire(redisKey, windowSec);
+    } catch (err) {
+      redisRateLimitEnabled = false;
+      warnRedisFallback(err.message || err.code);
+    }
+  }
+
+  if (!count) count = rateLimitInMemory(subkeyId, limit, windowStart, windowSec);
+
   const remaining = Math.max(limit - count, 0);
   const reset = windowStart + windowSec;
   return { remaining, reset, limit, allowed: count <= limit };
@@ -216,7 +251,12 @@ fastify.post('/v1/chat/completions', async (req, reply) => {
 });
 
 async function start() {
-  await redis.connect();
+  try {
+    await redis.connect();
+  } catch (err) {
+    redisRateLimitEnabled = false;
+    warnRedisFallback(err.message || err.code);
+  }
   await initDb();
   const port = 3001;
   await fastify.listen({ port, host: '0.0.0.0' });
