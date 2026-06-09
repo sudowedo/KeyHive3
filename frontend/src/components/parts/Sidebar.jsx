@@ -1,16 +1,14 @@
-import { useState } from 'react';
-
 const items = [
   ['overview', 'Overview', '🏠'],
   ['masterkeys', 'Master keys', '🔑'],
   ['subkeys', 'Subkeys', '🧩'],
   ['logs', 'Request logs', '📄'],
   ['demo', 'Live demo', '📊'],
+  ['health', 'Health', '🩺'],
   ['notifications', 'Notifications', '🔔'],
 ];
 
-export default function Sidebar({ page, navigate }) {
-  const [drawerOpen, setDrawerOpen] = useState(false);
+export default function Sidebar({ page, navigate, onBackToConsole, drawerOpen, setDrawerOpen }) {
 
   const go = (next) => {
     navigate(next);
@@ -18,18 +16,12 @@ export default function Sidebar({ page, navigate }) {
   };
 
   return <>
-    <header className='mobile-appbar'>
-      <button className='mobile-icon-btn' onClick={() => setDrawerOpen(true)} aria-label='Open menu'>☰</button>
-      <div className='mobile-brand'>KeyGate</div>
-      <div className='mobile-appbar-actions'>
-        <button className='mobile-icon-btn' onClick={() => go('notifications')} aria-label='Notifications'>🔔</button>
-        <button className='mobile-avatar' aria-label='Profile'>A</button>
-      </div>
-    </header>
-
     <aside className='sidebar'>
-      <div className='logo'><div className='logo-mark'><div className='logo-icon'>▦</div><div><div className='logo-name'>KeyGate</div><div className='logo-sub'>API access manager</div></div></div></div>
-      <nav className='nav'><div className='nav-label'>Platform</div>{items.map(([k, l]) => <button key={k} className={`nav-item ${page === k ? 'active' : ''}`} onClick={() => navigate(k)}>{l}{k === 'demo' && <span className='nav-dot' />}</button>)}</nav>
+      <nav className='nav'>
+        <div className='nav-label'>Platform</div>
+        {onBackToConsole && <button className='nav-item' onClick={onBackToConsole}>← Back to console</button>}
+        {items.map(([k, l]) => <button key={k} className={`nav-item ${page === k ? 'active' : ''}`} onClick={() => navigate(k)}>{l}{k === 'demo' && <span className='nav-dot' />}</button>)}
+      </nav>
       <div className='sidebar-footer'><div className='api-url-box'><div className='api-url-label'>Proxy endpoint</div><div className='api-url'>localhost:3001</div></div></div>
     </aside>
 
